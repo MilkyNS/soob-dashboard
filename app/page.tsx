@@ -19,6 +19,17 @@ interface Trade {
   confidence: number;
 }
 
+interface LiveTick {
+  price: number;
+  action: string;
+  in_killzone: boolean;
+  ny_hour: number;
+  last_tick: string;
+  has_position: boolean;
+  unrealized_pnl: number;
+  current_rr: number;
+}
+
 interface BotStatus {
   state: {
     equity: number;
@@ -27,6 +38,7 @@ interface BotStatus {
     max_drawdown: number;
     total_pnl: number;
     total_closed: number;
+    live?: LiveTick;
   };
   stats: {
     total_trades: number;
@@ -68,6 +80,97 @@ function StatCard({
         {value}
       </p>
       {sub && <p className="text-xs text-zinc-500 mt-1">{sub}</p>}
+    </div>
+  );
+}
+
+function LiveBanner({ live }: { live?: LiveTick }) {
+  if (!live || !live.last_tick) {
+    return (
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+        <div className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-zinc-600" />
+          <span className="text-sm text-zinc-500">Waiting for bot data...</span>
+        </div>
+      </div>
+    );
+  }
+
+  const tickAge = Math.round(
+    (Date.now() - new Date(live.last_tick + "Z").getTime()) / 1000
+  );
+  const isAlive = tickAge < 600;
+
+  const actionLabels: Record<string, string> = {
+    scanning: "Scanning for setups",
+    outside_killzone: "Outside killzone",
+    position_open: "Position open",
+    position_closed: "Position just closed",
+    trade_opened: "Trade opened!",
+    signal_pending_fill: "Signal found — waiting for fill",
+    daily_limit_reached: "Daily trade limit reached",
+    daily_sl_limit: "Daily SL limit reached",
+    idle: "Idle",
+  };
+
+  const actionText = live.action.startsWith("cooldown")
+    ? `Cooldown ${live.action.match(/\(.*\)/)?.[0] || ""}`
+    : actionLabels[live.action] || live.action;
+
+  const actionColor =
+    live.action === "scanning"
+      ? "text-blue-400"
+      : live.action === "position_open"
+        ? "text-amber-400"
+        : live.action === "trade_opened"
+          ? "text-emerald-400"
+          : live.action === "outside_killzone"
+            ? "text-zinc-500"
+            : "text-zinc-400";
+
+  return (
+    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="text-right">
+            <p className="text-2xl font-bold tabular-nums">
+              ${live.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </p>
+            <p className="text-xs text-zinc-500">BTC/USDT</p>
+          </div>
+        </div>
+        <div className="text-right">
+          <div className="flex items-center gap-2 justify-end">
+            <span
+              className={`w-2 h-2 rounded-full ${
+                isAlive
+                  ? live.in_killzone
+                    ? "bg-emerald-400 animate-pulse"
+                    : "bg-emerald-400"
+                  : "bg-red-400"
+              }`}
+            />
+            <span className={`text-sm font-medium ${actionColor}`}>
+              {actionText}
+            </span>
+          </div>
+          <p className="text-xs text-zinc-500 mt-0.5">
+            NY {live.ny_hour}:00 {live.in_killzone ? "(KZ)" : ""} · {isAlive ? `${tickAge}s ago` : "stale"}
+          </p>
+        </div>
+      </div>
+      {live.has_position && (
+        <div className="mt-3 pt-3 border-t border-zinc-800 flex justify-between items-center">
+          <span className="text-xs text-zinc-500">Unrealized P&L</span>
+          <span
+            className={`text-sm font-bold ${
+              live.unrealized_pnl >= 0 ? "text-emerald-400" : "text-red-400"
+            }`}
+          >
+            {live.unrealized_pnl >= 0 ? "+" : ""}${live.unrealized_pnl.toFixed(2)} ({live.current_rr >= 0 ? "+" : ""}{live.current_rr.toFixed(1)}R)
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -295,27 +398,25 @@ export default function Dashboard() {
   return (
     <main className="max-w-lg mx-auto px-4 py-6 pb-20">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4">
         <div>
           <h1 className="text-xl font-bold tracking-tight">SoOB Bot</h1>
           <p className="text-xs text-zinc-500">Paper Trading v2a</p>
         </div>
         <div className="flex items-center gap-2">
-          {error ? (
-            <span className="w-2 h-2 rounded-full bg-red-400 animate-pulse" />
-          ) : (
-            <span className="w-2 h-2 rounded-full bg-emerald-400" />
+          {error && (
+            <span className="text-xs text-red-400">{error}</span>
           )}
-          <span className="text-xs text-zinc-500">
-            {lastUpdate
-              ? `${Math.round((Date.now() - lastUpdate.getTime()) / 1000)}s ago`
-              : ""}
-          </span>
         </div>
       </div>
 
+      {/* Live Status */}
+      <LiveBanner live={state.live} />
+
       {/* Phase */}
-      <PhaseIndicator phase={data.phase} equity={state.equity} />
+      <div className="mt-4">
+        <PhaseIndicator phase={data.phase} equity={state.equity} />
+      </div>
 
       {/* Key Stats */}
       <div className="grid grid-cols-2 gap-3 mt-4">
