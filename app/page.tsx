@@ -1,65 +1,438 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useEffect, useState } from "react";
+
+const REFRESH_INTERVAL = 15000;
+
+interface Trade {
+  entry_time: string;
+  exit_time: string;
+  direction: string;
+  entry_price: number;
+  exit_price: number;
+  pnl: number;
+  rr: number;
+  exit_reason: string;
+  model: string;
+  equity_after: number;
+  position_size: number;
+  confidence: number;
+}
+
+interface BotStatus {
+  state: {
+    equity: number;
+    starting_capital: number;
+    peak_equity: number;
+    max_drawdown: number;
+    total_pnl: number;
+    total_closed: number;
+  };
+  stats: {
+    total_trades: number;
+    wins: number;
+    losses: number;
+    win_rate: number;
+    total_pnl: number;
+    avg_rr: number;
+    best_trade: number;
+    worst_trade: number;
+  };
+  trades: Trade[];
+  equity_curve: { time: string; equity: number }[];
+  recent_events: { time: string; event: string }[];
+  phase: number;
+}
+
+function StatCard({
+  label,
+  value,
+  sub,
+  accent,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  accent?: "green" | "red" | "yellow" | "default";
+}) {
+  const colors = {
+    green: "text-emerald-400",
+    red: "text-red-400",
+    yellow: "text-amber-400",
+    default: "text-white",
+  };
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+      <p className="text-xs text-zinc-500 uppercase tracking-wider">{label}</p>
+      <p className={`text-2xl font-bold mt-1 ${colors[accent || "default"]}`}>
+        {value}
+      </p>
+      {sub && <p className="text-xs text-zinc-500 mt-1">{sub}</p>}
+    </div>
+  );
+}
+
+function PhaseIndicator({ phase, equity }: { phase: number; equity: number }) {
+  const progress = phase === 1 ? Math.min((equity / 5000) * 100, 100) : 100;
+  return (
+    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs text-zinc-500 uppercase tracking-wider">
+            Phase
+          </p>
+          <p className="text-2xl font-bold mt-1">
+            {phase === 1 ? (
+              <span className="text-amber-400">1 - Building</span>
+            ) : (
+              <span className="text-emerald-400">2 - Harvesting</span>
+            )}
           </p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+        <div className="text-right">
+          <p className="text-xs text-zinc-500">
+            {phase === 1 ? "Compound 13%" : "Flat $1,000/trade"}
+          </p>
+          <p className="text-xs text-zinc-500">
+            {phase === 1
+              ? `$${equity.toLocaleString()} / $5,000`
+              : "20% of $5k"}
+          </p>
         </div>
-      </main>
+      </div>
+      {phase === 1 && (
+        <div className="mt-3 h-2 bg-zinc-800 rounded-full overflow-hidden">
+          <div
+            className="h-full bg-amber-400 rounded-full transition-all duration-500"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+      )}
     </div>
+  );
+}
+
+function TradeRow({ trade }: { trade: Trade }) {
+  const isWin = trade.pnl > 0;
+  const time = trade.exit_time
+    ? new Date(trade.exit_time).toLocaleString("en-US", {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : "";
+
+  return (
+    <div className="flex items-center justify-between py-3 border-b border-zinc-800/50 last:border-0">
+      <div className="flex items-center gap-3">
+        <div
+          className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold ${
+            trade.direction === "LONG"
+              ? "bg-emerald-400/10 text-emerald-400"
+              : "bg-red-400/10 text-red-400"
+          }`}
+        >
+          {trade.direction === "LONG" ? "L" : "S"}
+        </div>
+        <div>
+          <p className="text-sm font-medium">
+            ${trade.entry_price.toLocaleString()}
+          </p>
+          <p className="text-xs text-zinc-500">{time}</p>
+        </div>
+      </div>
+      <div className="text-right">
+        <p
+          className={`text-sm font-bold ${isWin ? "text-emerald-400" : "text-red-400"}`}
+        >
+          {isWin ? "+" : ""}${trade.pnl.toFixed(2)}
+        </p>
+        <p className="text-xs text-zinc-500">
+          {trade.rr.toFixed(1)}R &middot; {trade.exit_reason}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function EquityChart({
+  data,
+  startingCapital,
+}: {
+  data: { time: string; equity: number }[];
+  startingCapital: number;
+}) {
+  if (data.length === 0) {
+    return (
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+        <p className="text-xs text-zinc-500 uppercase tracking-wider mb-3">
+          Equity Curve
+        </p>
+        <div className="h-32 flex items-center justify-center text-zinc-600 text-sm">
+          No trades yet
+        </div>
+      </div>
+    );
+  }
+
+  const values = [startingCapital, ...data.map((d) => d.equity)];
+  const min = Math.min(...values) * 0.95;
+  const max = Math.max(...values) * 1.05;
+  const range = max - min || 1;
+  const h = 128;
+  const w = 100;
+
+  const points = values
+    .map((v, i) => {
+      const x = (i / (values.length - 1)) * w;
+      const y = h - ((v - min) / range) * h;
+      return `${x},${y}`;
+    })
+    .join(" ");
+
+  const lastEquity = values[values.length - 1];
+  const isUp = lastEquity >= startingCapital;
+
+  return (
+    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+      <p className="text-xs text-zinc-500 uppercase tracking-wider mb-3">
+        Equity Curve
+      </p>
+      <svg
+        viewBox={`0 0 ${w} ${h}`}
+        className="w-full h-32"
+        preserveAspectRatio="none"
+      >
+        <defs>
+          <linearGradient id="eqGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop
+              offset="0%"
+              stopColor={isUp ? "#34d399" : "#f87171"}
+              stopOpacity="0.3"
+            />
+            <stop
+              offset="100%"
+              stopColor={isUp ? "#34d399" : "#f87171"}
+              stopOpacity="0"
+            />
+          </linearGradient>
+        </defs>
+        <polygon points={`0,${h} ${points} ${w},${h}`} fill="url(#eqGrad)" />
+        <polyline
+          points={points}
+          fill="none"
+          stroke={isUp ? "#34d399" : "#f87171"}
+          strokeWidth="1.5"
+          vectorEffect="non-scaling-stroke"
+        />
+      </svg>
+      <div className="flex justify-between mt-2 text-xs text-zinc-500">
+        <span>${min.toFixed(0)}</span>
+        <span>${max.toFixed(0)}</span>
+      </div>
+    </div>
+  );
+}
+
+export default function Dashboard() {
+  const [data, setData] = useState<BotStatus | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+
+  async function fetchData() {
+    try {
+      const res = await fetch("/api/status", {
+        cache: "no-store",
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      setData(json);
+      setError(null);
+      setLastUpdate(new Date());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to fetch");
+    }
+  }
+
+  useEffect(() => {
+    fetchData();
+    const interval = setInterval(fetchData, REFRESH_INTERVAL);
+    return () => clearInterval(interval);
+  }, []);
+
+  if (error && !data) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <div className="bg-red-900/20 border border-red-800 rounded-xl p-6 max-w-sm w-full text-center">
+          <p className="text-red-400 font-bold">Connection Error</p>
+          <p className="text-sm text-zinc-400 mt-2">{error}</p>
+          <button
+            onClick={fetchData}
+            className="mt-4 px-4 py-2 bg-zinc-800 rounded-lg text-sm hover:bg-zinc-700 transition"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-pulse text-zinc-500">Loading...</div>
+      </div>
+    );
+  }
+
+  const { state, stats, trades, equity_curve } = data;
+  const drawdownPct =
+    state.peak_equity > 0
+      ? ((state.peak_equity - state.equity) / state.peak_equity) * 100
+      : 0;
+
+  return (
+    <main className="max-w-lg mx-auto px-4 py-6 pb-20">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-xl font-bold tracking-tight">SoOB Bot</h1>
+          <p className="text-xs text-zinc-500">Paper Trading v2a</p>
+        </div>
+        <div className="flex items-center gap-2">
+          {error ? (
+            <span className="w-2 h-2 rounded-full bg-red-400 animate-pulse" />
+          ) : (
+            <span className="w-2 h-2 rounded-full bg-emerald-400" />
+          )}
+          <span className="text-xs text-zinc-500">
+            {lastUpdate
+              ? `${Math.round((Date.now() - lastUpdate.getTime()) / 1000)}s ago`
+              : ""}
+          </span>
+        </div>
+      </div>
+
+      {/* Phase */}
+      <PhaseIndicator phase={data.phase} equity={state.equity} />
+
+      {/* Key Stats */}
+      <div className="grid grid-cols-2 gap-3 mt-4">
+        <StatCard
+          label="Equity"
+          value={`$${state.equity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          sub={`Peak: $${state.peak_equity.toLocaleString()}`}
+          accent={state.equity >= state.starting_capital ? "green" : "red"}
+        />
+        <StatCard
+          label="Total P&L"
+          value={`${stats.total_pnl >= 0 ? "+" : ""}$${stats.total_pnl.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
+          sub={`${stats.total_trades} trades`}
+          accent={stats.total_pnl >= 0 ? "green" : "red"}
+        />
+        <StatCard
+          label="Win Rate"
+          value={stats.total_trades > 0 ? `${stats.win_rate}%` : "--"}
+          sub={`${stats.wins}W / ${stats.losses}L`}
+          accent={
+            stats.win_rate >= 70
+              ? "green"
+              : stats.win_rate >= 50
+                ? "yellow"
+                : "red"
+          }
+        />
+        <StatCard
+          label="Drawdown"
+          value={`${drawdownPct.toFixed(1)}%`}
+          sub={`Max: $${state.max_drawdown.toFixed(0)}`}
+          accent={
+            drawdownPct > 20 ? "red" : drawdownPct > 10 ? "yellow" : "green"
+          }
+        />
+      </div>
+
+      {/* Equity Curve */}
+      <div className="mt-4">
+        <EquityChart
+          data={equity_curve}
+          startingCapital={state.starting_capital}
+        />
+      </div>
+
+      {/* More Stats */}
+      <div className="grid grid-cols-3 gap-3 mt-4">
+        <StatCard
+          label="Avg RR"
+          value={stats.avg_rr > 0 ? `${stats.avg_rr}R` : "--"}
+        />
+        <StatCard
+          label="Best"
+          value={
+            stats.best_trade > 0 ? `+$${stats.best_trade.toFixed(0)}` : "--"
+          }
+          accent="green"
+        />
+        <StatCard
+          label="Worst"
+          value={
+            stats.worst_trade < 0
+              ? `-$${Math.abs(stats.worst_trade).toFixed(0)}`
+              : "--"
+          }
+          accent="red"
+        />
+      </div>
+
+      {/* Trade History */}
+      <div className="mt-6">
+        <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-3">
+          Recent Trades
+        </h2>
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl px-4">
+          {trades.length === 0 ? (
+            <p className="py-8 text-center text-zinc-600 text-sm">
+              No trades yet — bot is scanning for setups
+            </p>
+          ) : (
+            [...trades]
+              .reverse()
+              .map((trade, i) => <TradeRow key={i} trade={trade} />)
+          )}
+        </div>
+      </div>
+
+      {/* Events */}
+      <div className="mt-6">
+        <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-3">
+          Activity Log
+        </h2>
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+          {data.recent_events.length === 0 ? (
+            <p className="text-center text-zinc-600 text-sm">No events</p>
+          ) : (
+            <div className="space-y-2">
+              {[...data.recent_events]
+                .reverse()
+                .slice(0, 10)
+                .map((evt, i) => (
+                  <div key={i} className="flex justify-between text-xs">
+                    <span className="text-zinc-500 font-mono">
+                      {new Date(evt.time).toLocaleTimeString()}
+                    </span>
+                    <span className="text-zinc-400">{evt.event}</span>
+                  </div>
+                ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Footer */}
+      <p className="text-center text-xs text-zinc-600 mt-8">
+        PAPER MODE -- No real money at risk
+      </p>
+    </main>
   );
 }
