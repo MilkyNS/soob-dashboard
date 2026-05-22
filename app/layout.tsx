@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "SoOB Bot",
-  description: "Paper trading dashboard",
+  title: "SOOB Terminal",
+  description: "Series of Order Blocks — Paper Trading Terminal",
 };
 
 export const viewport: Viewport = {
