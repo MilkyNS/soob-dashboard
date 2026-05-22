@@ -234,7 +234,7 @@ function LiveBanner({ live }: { live?: LiveTick }) {
             </span>
           </div>
           <p className="text-[11px] text-zinc-500 mt-0.5">
-            NY {live.ny_hour}:00 {live.in_killzone ? "(KZ)" : ""} · {isAlive ? `${tickAge}s ago` : "stale"}
+            NY {live.ny_hour}:00 · {isAlive ? `${tickAge}s ago` : "stale"}
           </p>
         </div>
       </div>
