@@ -55,15 +55,12 @@ interface TimeframeData {
 
 interface StructuresResponse {
   exported_at: string;
-  "1D": TimeframeData;
-  "4H": TimeframeData;
-  "1H": TimeframeData;
-  "5M": TimeframeData;
+  [key: string]: TimeframeData | string;
 }
 
 type Timeframe = "5M" | "1H" | "4H" | "1D";
 
-const TIMEFRAMES: Timeframe[] = ["5M", "1H", "4H", "1D"];
+const TIMEFRAMES: Timeframe[] = ["1D", "4H", "1H", "5M"];
 const REFRESH_INTERVAL = 30000;
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -72,36 +69,53 @@ function isoToUnix(iso: string): number {
   return Math.floor(new Date(iso).getTime() / 1000);
 }
 
-function msStateColor(state: string): string {
-  if (state === "BULLISH") return "bg-emerald-500/20 text-emerald-400 border-emerald-500/30";
-  if (state === "BEARISH") return "bg-red-500/20 text-red-400 border-red-500/30";
-  return "bg-zinc-500/20 text-zinc-400 border-zinc-500/30";
+function msLabel(state: string): string {
+  if (state === "BULLISH") return "BULL";
+  if (state === "BEARISH") return "BEAR";
+  return "—";
 }
 
-// ── OB Overlay component ───────────────────────────────────────────────────
+function msColor(state: string): string {
+  if (state === "BULLISH") return "#34d399";
+  if (state === "BEARISH") return "#f87171";
+  return "#71717a";
+}
 
-interface OverlayRect {
+function fmtPrice(p: number): string {
+  if (p >= 10000) return p.toLocaleString("en-US", { maximumFractionDigits: 0 });
+  if (p >= 100) return p.toFixed(1);
+  return p.toFixed(4);
+}
+
+// ── OB/FVG Zone Overlay ───────────────────────────────────────────────────
+
+interface ZoneRect {
   id: string;
   x: number;
   y: number;
   width: number;
   height: number;
-  color: string;
+  bgColor: string;
   borderColor: string;
-  label?: string;
+  label: string;
+  labelColor: string;
   entryY?: number;
   slY?: number;
+  entryPrice?: number;
+  slPrice?: number;
+  opacity: number;
 }
 
-function ChartOverlay({
-  rects,
+function ZoneOverlay({
+  zones,
   containerWidth,
   containerHeight,
 }: {
-  rects: OverlayRect[];
+  zones: ZoneRect[];
   containerWidth: number;
   containerHeight: number;
 }) {
+  if (!zones.length) return null;
   return (
     <div
       style={{
@@ -112,180 +126,181 @@ function ChartOverlay({
         height: containerHeight,
         pointerEvents: "none",
         overflow: "hidden",
+        zIndex: 5,
       }}
     >
-      {rects.map((r) => (
-        <div key={r.id}>
-          {/* Zone rectangle */}
-          <div
-            style={{
-              position: "absolute",
-              left: r.x,
-              top: r.y,
-              width: Math.max(r.width, 0),
-              height: Math.max(r.height, 0),
-              backgroundColor: r.color,
-              borderTop: `1px solid ${r.borderColor}`,
-              borderBottom: `1px solid ${r.borderColor}`,
-            }}
-          />
-          {/* Entry line (dashed) */}
-          {r.entryY != null && r.entryY >= 0 && (
+      {zones.map((z) => {
+        const h = Math.max(z.height, 2);
+        const w = Math.max(z.width, 0);
+        return (
+          <div key={z.id}>
+            {/* Zone rectangle */}
             <div
               style={{
                 position: "absolute",
-                left: r.x,
-                top: r.entryY,
-                width: Math.max(r.width, 0),
-                height: 0,
-                borderTop: `1px dashed ${r.borderColor}`,
-                opacity: 0.8,
+                left: z.x,
+                top: z.y,
+                width: w,
+                height: h,
+                backgroundColor: z.bgColor,
+                borderTop: `2px solid ${z.borderColor}`,
+                borderBottom: `2px solid ${z.borderColor}`,
+                opacity: z.opacity,
               }}
             />
-          )}
-          {/* SL line (dotted) */}
-          {r.slY != null && r.slY >= 0 && (
+            {/* Label */}
             <div
               style={{
                 position: "absolute",
-                left: r.x,
-                top: r.slY,
-                width: Math.max(r.width, 0),
-                height: 0,
-                borderTop: `1px dotted ${r.borderColor}`,
-                opacity: 0.5,
+                left: z.x + 6,
+                top: z.y + 2,
+                color: z.labelColor,
+                fontSize: "10px",
+                fontWeight: 700,
+                fontFamily: "monospace",
+                letterSpacing: "0.5px",
+                textShadow: "0 1px 3px rgba(0,0,0,0.8)",
+                whiteSpace: "nowrap",
+                opacity: z.opacity,
               }}
-            />
-          )}
-        </div>
-      ))}
+            >
+              {z.label}
+            </div>
+            {/* Entry line (dashed) */}
+            {z.entryY != null && z.entryY >= 0 && z.entryY <= containerHeight && (
+              <div
+                style={{
+                  position: "absolute",
+                  left: z.x,
+                  top: z.entryY,
+                  width: w,
+                  height: 0,
+                  borderTop: `1px dashed ${z.borderColor}`,
+                  opacity: z.opacity * 0.9,
+                }}
+              >
+                <span
+                  style={{
+                    position: "absolute",
+                    right: 4,
+                    top: -12,
+                    color: z.labelColor,
+                    fontSize: "9px",
+                    fontFamily: "monospace",
+                    textShadow: "0 1px 2px rgba(0,0,0,0.8)",
+                    opacity: 0.8,
+                  }}
+                >
+                  ENTRY {z.entryPrice != null ? fmtPrice(z.entryPrice) : ""}
+                </span>
+              </div>
+            )}
+            {/* SL line (dotted red) */}
+            {z.slY != null && z.slY >= 0 && z.slY <= containerHeight && (
+              <div
+                style={{
+                  position: "absolute",
+                  left: z.x,
+                  top: z.slY,
+                  width: w,
+                  height: 0,
+                  borderTop: "1px dotted #ef4444",
+                  opacity: z.opacity * 0.7,
+                }}
+              >
+                <span
+                  style={{
+                    position: "absolute",
+                    right: 4,
+                    top: 2,
+                    color: "#ef4444",
+                    fontSize: "9px",
+                    fontFamily: "monospace",
+                    textShadow: "0 1px 2px rgba(0,0,0,0.8)",
+                    opacity: 0.8,
+                  }}
+                >
+                  SL {z.slPrice != null ? fmtPrice(z.slPrice) : ""}
+                </span>
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
 
-// ── Structure Panel ────────────────────────────────────────────────────────
+// ── OB/FVG Info Panel ─────────────────────────────────────────────────────
 
-function StructurePanel({ data }: { data: TimeframeData }) {
-  const [open, setOpen] = useState(false);
-
+function InfoPanel({ data, tf }: { data: TimeframeData; tf: string }) {
   const activeOBs = data.obs.filter(
     (ob) => ob.status === "FRESH" || ob.status === "TESTED"
   );
   const activeFVGs = data.fvgs.filter((f) => f.status === "ACTIVE");
 
+  if (activeOBs.length === 0 && activeFVGs.length === 0) {
+    return (
+      <div className="text-xs text-zinc-600 px-4 py-2">
+        No active OBs or FVGs on {tf}
+      </div>
+    );
+  }
+
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
-      <button
-        onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-between px-4 py-3 hover:bg-zinc-800/50 transition-colors"
-      >
-        <span className="text-xs text-zinc-500 uppercase tracking-wider font-semibold">
-          Market Structure
-        </span>
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-zinc-500">
-            {activeOBs.length} OB &middot; {activeFVGs.length} FVG
-          </span>
-          <svg
-            className={`w-4 h-4 text-zinc-500 transition-transform ${open ? "rotate-180" : ""}`}
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2}
+    <div className="flex flex-wrap gap-2 px-4 py-2">
+      {activeOBs.map((ob, i) => {
+        const isLong = ob.direction === "BEARISH";
+        return (
+          <div
+            key={`ob-${i}`}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-800/80 border border-zinc-700/50"
           >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-          </svg>
-        </div>
-      </button>
-
-      {open && (
-        <div className="px-4 pb-4 space-y-4">
-          {/* OBs */}
-          <div>
-            <p className="text-xs text-zinc-500 uppercase tracking-wider mb-2">
-              Order Blocks ({activeOBs.length})
-            </p>
-            {activeOBs.length === 0 ? (
-              <p className="text-xs text-zinc-600">No active OBs</p>
-            ) : (
-              <div className="space-y-2">
-                {activeOBs.map((ob, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center justify-between py-2 px-3 rounded-lg bg-zinc-800/50"
-                  >
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`text-xs font-bold ${
-                          ob.direction === "BEARISH"
-                            ? "text-emerald-400"
-                            : "text-red-400"
-                        }`}
-                      >
-                        {ob.direction === "BEARISH" ? "↑ LONG" : "↓ SHORT"}
-                      </span>
-                      <span className="text-xs text-zinc-400">
-                        ${ob.low.toLocaleString()} - ${ob.high.toLocaleString()}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="text-xs text-zinc-500">
-                        Entry: ${ob.entry_045.toLocaleString()}
-                      </span>
-                      <span className="text-xs text-zinc-500">
-                        SL: ${ob.sl_110.toLocaleString()}
-                      </span>
-                      <span
-                        className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-                          ob.status === "FRESH"
-                            ? "bg-emerald-500/20 text-emerald-400"
-                            : "bg-amber-500/20 text-amber-400"
-                        }`}
-                      >
-                        {ob.status}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+            <span
+              className="w-2 h-2 rounded-sm"
+              style={{ backgroundColor: isLong ? "#a78bfa" : "#f87171" }}
+            />
+            <span className="text-[10px] font-bold" style={{ color: isLong ? "#a78bfa" : "#f87171" }}>
+              {isLong ? "LONG" : "SHORT"} OB
+            </span>
+            <span className="text-[10px] text-zinc-400">
+              {fmtPrice(ob.low)}–{fmtPrice(ob.high)}
+            </span>
+            <span className="text-[10px] text-zinc-500">
+              E:{fmtPrice(ob.entry_045)}
+            </span>
+            <span
+              className={`text-[9px] px-1 rounded ${
+                ob.status === "FRESH"
+                  ? "bg-emerald-500/20 text-emerald-400"
+                  : "bg-amber-500/20 text-amber-400"
+              }`}
+            >
+              {ob.status}
+            </span>
           </div>
-
-          {/* FVGs */}
-          <div>
-            <p className="text-xs text-zinc-500 uppercase tracking-wider mb-2">
-              Fair Value Gaps ({activeFVGs.length})
-            </p>
-            {activeFVGs.length === 0 ? (
-              <p className="text-xs text-zinc-600">No active FVGs</p>
-            ) : (
-              <div className="space-y-2">
-                {activeFVGs.map((fvg, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center justify-between py-2 px-3 rounded-lg bg-zinc-800/50"
-                  >
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`text-xs font-bold ${
-                          fvg.direction === "BULLISH"
-                            ? "text-emerald-400"
-                            : "text-red-400"
-                        }`}
-                      >
-                        {fvg.direction === "BULLISH" ? "↑" : "↓"} {fvg.direction}
-                      </span>
-                    </div>
-                    <span className="text-xs text-zinc-400">
-                      ${fvg.gap_low.toLocaleString()} - ${fvg.gap_high.toLocaleString()}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
+        );
+      })}
+      {activeFVGs.map((fvg, i) => {
+        const isBull = fvg.direction === "BULLISH";
+        return (
+          <div
+            key={`fvg-${i}`}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-800/80 border border-zinc-700/50"
+          >
+            <span
+              className="w-2 h-2 rounded-sm"
+              style={{ backgroundColor: "#38bdf8" }}
+            />
+            <span className="text-[10px] font-bold" style={{ color: "#38bdf8" }}>
+              {isBull ? "BULL" : "BEAR"} FVG
+            </span>
+            <span className="text-[10px] text-zinc-400">
+              {fmtPrice(fvg.gap_low)}–{fmtPrice(fvg.gap_high)}
+            </span>
           </div>
-        </div>
-      )}
+        );
+      })}
     </div>
   );
 }
@@ -295,15 +310,20 @@ function StructurePanel({ data }: { data: TimeframeData }) {
 export default function ChartPage() {
   const [data, setData] = useState<StructuresResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [tf, setTf] = useState<Timeframe>("5M");
+  const [tf, setTf] = useState<Timeframe>("1H");
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+
+  // Toggle overlays
+  const [showOBs, setShowOBs] = useState(true);
+  const [showFVGs, setShowFVGs] = useState(true);
+  const [showSwings, setShowSwings] = useState(true);
+  const [showInvalidated, setShowInvalidated] = useState(true);
 
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<SeriesType> | null>(null);
-  const markersPluginRef = useRef<{ setMarkers: (m: SeriesMarker<Time>[]) => void } | null>(null);
 
-  const [overlayRects, setOverlayRects] = useState<OverlayRect[]>([]);
+  const [overlayZones, setOverlayZones] = useState<ZoneRect[]>([]);
   const [containerSize, setContainerSize] = useState({ w: 0, h: 0 });
 
   // ── Fetch data ───────────────────────────────────────────────────────────
@@ -334,82 +354,118 @@ export default function ChartPage() {
 
     const chart = chartRef.current;
     const series = seriesRef.current;
-    const tfData = data[tf];
+    const tfData = data[tf] as TimeframeData;
+    if (!tfData) return;
     const timeScale = chart.timeScale();
-
-    const rects: OverlayRect[] = [];
-
-    // Get chart right edge coordinate for extending zones to the right
     const chartWidth = chartContainerRef.current?.clientWidth ?? 800;
 
-    // OB zones
-    tfData.obs
-      .filter((ob) => ob.status === "FRESH" || ob.status === "TESTED")
-      .forEach((ob, i) => {
+    const zones: ZoneRect[] = [];
+
+    // ── OB zones (all statuses) ────────────────────────────────────────
+    if (showOBs) {
+      const obsToShow = showInvalidated
+        ? tfData.obs
+        : tfData.obs.filter((ob) => ob.status === "FRESH" || ob.status === "TESTED");
+
+      obsToShow.forEach((ob, i) => {
         const startTime = isoToUnix(ob.start_ts) as Time;
-        const endTime = isoToUnix(ob.end_ts) as Time;
 
         const x1 = timeScale.timeToCoordinate(startTime);
-        const x2 = timeScale.timeToCoordinate(endTime);
         const yHigh = series.priceToCoordinate(ob.high);
         const yLow = series.priceToCoordinate(ob.low);
 
         if (x1 == null || yHigh == null || yLow == null) return;
 
-        // Extend to chart right edge if visible
-        const xEnd = x2 != null ? Math.max(x2, chartWidth) : chartWidth;
+        const isLong = ob.direction === "BEARISH";
+        const isFresh = ob.status === "FRESH";
+        const isTested = ob.status === "TESTED";
+        const isActive = isFresh || isTested;
 
-        const isBearish = ob.direction === "BEARISH";
-        const color = isBearish
-          ? "rgba(52, 211, 153, 0.08)"
-          : "rgba(248, 113, 113, 0.08)";
-        const borderColor = isBearish
-          ? "rgba(52, 211, 153, 0.3)"
-          : "rgba(248, 113, 113, 0.3)";
+        let bgColor: string;
+        let borderColor: string;
+        let labelColor: string;
+        let opacity: number;
 
-        const entryYCoord = series.priceToCoordinate(ob.entry_045);
-        const slYCoord = series.priceToCoordinate(ob.sl_110);
+        if (isLong) {
+          // Long entry (bearish OB) — purple/violet like the study
+          bgColor = isActive ? "rgba(139, 92, 246, 0.20)" : "rgba(139, 92, 246, 0.06)";
+          borderColor = isActive ? "rgba(139, 92, 246, 0.7)" : "rgba(139, 92, 246, 0.2)";
+          labelColor = isActive ? "#a78bfa" : "#6d5bb5";
+          opacity = isActive ? 1 : 0.5;
+        } else {
+          // Short entry (bullish OB) — red/pink
+          bgColor = isActive ? "rgba(248, 113, 113, 0.20)" : "rgba(248, 113, 113, 0.06)";
+          borderColor = isActive ? "rgba(248, 113, 113, 0.7)" : "rgba(248, 113, 113, 0.2)";
+          labelColor = isActive ? "#f87171" : "#b55b5b";
+          opacity = isActive ? 1 : 0.5;
+        }
 
-        rects.push({
+        const statusTag = isFresh ? "FRESH" : isTested ? "TESTED" : "INVALIDATED";
+        const dirTag = isLong ? "LONG" : "SHORT";
+        const label = `${tf} ${dirTag} OB · ${statusTag}`;
+
+        let entryYCoord: number | undefined;
+        let slYCoord: number | undefined;
+
+        if (isActive) {
+          const ey = series.priceToCoordinate(ob.entry_045);
+          const sy = series.priceToCoordinate(ob.sl_110);
+          entryYCoord = ey ?? undefined;
+          slYCoord = sy ?? undefined;
+        }
+
+        zones.push({
           id: `ob-${i}`,
           x: x1,
           y: Math.min(yHigh, yLow),
-          width: xEnd - x1,
+          width: chartWidth - x1 + 50,
           height: Math.abs(yLow - yHigh),
-          color,
+          bgColor,
           borderColor,
-          entryY: entryYCoord ?? undefined,
-          slY: slYCoord ?? undefined,
+          label,
+          labelColor,
+          entryY: entryYCoord,
+          slY: slYCoord,
+          entryPrice: isActive ? ob.entry_045 : undefined,
+          slPrice: isActive ? ob.sl_110 : undefined,
+          opacity,
         });
       });
+    }
 
-    // FVG zones
-    tfData.fvgs
-      .filter((f) => f.status === "ACTIVE")
-      .forEach((fvg, i) => {
-        // FVGs don't have start/end timestamps, so we draw them across the visible range
-        const visibleRange = timeScale.getVisibleRange();
-        if (!visibleRange) return;
+    // ── FVG zones ──────────────────────────────────────────────────────
+    if (showFVGs) {
+      const activeFVGs = tfData.fvgs.filter((f) => f.status === "ACTIVE");
 
-        const x1 = timeScale.timeToCoordinate(visibleRange.from);
+      activeFVGs.forEach((fvg, i) => {
         const yHigh = series.priceToCoordinate(fvg.gap_high);
         const yLow = series.priceToCoordinate(fvg.gap_low);
 
-        if (x1 == null || yHigh == null || yLow == null) return;
+        if (yHigh == null || yLow == null) return;
 
-        rects.push({
+        const isBull = fvg.direction === "BULLISH";
+
+        zones.push({
           id: `fvg-${i}`,
           x: 0,
           y: Math.min(yHigh, yLow),
           width: chartWidth,
           height: Math.abs(yLow - yHigh),
-          color: "rgba(96, 165, 250, 0.06)",
-          borderColor: "rgba(96, 165, 250, 0.2)",
+          bgColor: isBull
+            ? "rgba(56, 189, 248, 0.10)"
+            : "rgba(251, 191, 36, 0.10)",
+          borderColor: isBull
+            ? "rgba(56, 189, 248, 0.4)"
+            : "rgba(251, 191, 36, 0.4)",
+          label: `${isBull ? "BULL" : "BEAR"} FVG`,
+          labelColor: isBull ? "#38bdf8" : "#fbbf24",
+          opacity: 1,
         });
       });
+    }
 
-    setOverlayRects(rects);
-  }, [data, tf]);
+    setOverlayZones(zones);
+  }, [data, tf, showOBs, showFVGs, showInvalidated]);
 
   // ── Chart setup and data update ──────────────────────────────────────────
 
@@ -419,34 +475,31 @@ export default function ChartPage() {
     let chart = chartRef.current;
     let isNewChart = false;
 
-    // Dynamically import lightweight-charts
     const setup = async () => {
       const lc = await import("lightweight-charts");
-
       const container = chartContainerRef.current!;
 
-      // Create chart if needed
       if (!chart) {
         chart = lc.createChart(container, {
           layout: {
             background: { color: "#0a0a0a" },
             textColor: "#71717a",
-            fontFamily: "var(--font-geist-sans), system-ui, sans-serif",
+            fontFamily: "system-ui, sans-serif",
             fontSize: 11,
           },
           grid: {
-            vertLines: { color: "rgba(63, 63, 70, 0.3)" },
-            horzLines: { color: "rgba(63, 63, 70, 0.3)" },
+            vertLines: { color: "rgba(63, 63, 70, 0.15)" },
+            horzLines: { color: "rgba(63, 63, 70, 0.15)" },
           },
           crosshair: {
             vertLine: { color: "rgba(161, 161, 170, 0.3)", labelBackgroundColor: "#27272a" },
             horzLine: { color: "rgba(161, 161, 170, 0.3)", labelBackgroundColor: "#27272a" },
           },
           rightPriceScale: {
-            borderColor: "rgba(63, 63, 70, 0.5)",
+            borderColor: "rgba(63, 63, 70, 0.3)",
           },
           timeScale: {
-            borderColor: "rgba(63, 63, 70, 0.5)",
+            borderColor: "rgba(63, 63, 70, 0.3)",
             timeVisible: true,
             secondsVisible: false,
           },
@@ -457,7 +510,6 @@ export default function ChartPage() {
         chartRef.current = chart;
         isNewChart = true;
 
-        // Resize observer
         const ro = new ResizeObserver(() => {
           if (chartContainerRef.current && chartRef.current) {
             const { clientWidth, clientHeight } = chartContainerRef.current;
@@ -468,34 +520,28 @@ export default function ChartPage() {
         });
         ro.observe(container);
 
-        // Subscribe to visible range changes for overlay updates
         chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
           computeOverlays();
         });
-        chart.timeScale().subscribeVisibleTimeRangeChange(() => {
-          computeOverlays();
-        });
       }
 
-      // Remove old series if switching timeframes
       if (seriesRef.current && !isNewChart) {
         chart!.removeSeries(seriesRef.current);
         seriesRef.current = null;
-        markersPluginRef.current = null;
       }
 
-      // Add candlestick series
       const series = chart!.addSeries(lc.CandlestickSeries, {
-        upColor: "#34d399",
-        downColor: "#f87171",
-        wickUpColor: "#34d399",
-        wickDownColor: "#f87171",
+        upColor: "#22c55e",
+        downColor: "#ef4444",
+        wickUpColor: "#22c55e",
+        wickDownColor: "#ef4444",
         borderVisible: false,
       });
       seriesRef.current = series;
 
-      // Set candle data
-      const tfData = data[tf];
+      const tfData = data[tf] as TimeframeData;
+      if (!tfData) return;
+
       const candles = tfData.candles
         .map((c) => ({
           time: isoToUnix(c.t) as Time,
@@ -508,34 +554,40 @@ export default function ChartPage() {
 
       series.setData(candles);
 
-      // Swing markers
-      const markers: SeriesMarker<Time>[] = tfData.swings
-        .map((sw) => ({
-          time: isoToUnix(sw.timestamp) as Time,
-          position: (sw.is_high ? "aboveBar" : "belowBar") as "aboveBar" | "belowBar",
-          shape: (sw.is_high ? "arrowDown" : "arrowUp") as "arrowDown" | "arrowUp",
-          color: sw.is_high ? "#f87171" : "#34d399",
-          text: sw.is_high ? "SH" : "SL",
-        }))
-        .sort((a, b) => (a.time as number) - (b.time as number));
+      // Swing markers — only last N swings, subtle style
+      if (showSwings) {
+        const recentHighs = tfData.swings
+          .filter((s) => s.is_high)
+          .slice(-4);
+        const recentLows = tfData.swings
+          .filter((s) => !s.is_high)
+          .slice(-4);
+        const recentSwings = [...recentHighs, ...recentLows];
 
-      // Use createSeriesMarkers for v5
-      const markersPlugin = lc.createSeriesMarkers(series, markers);
-      markersPluginRef.current = markersPlugin;
+        const markers: SeriesMarker<Time>[] = recentSwings
+          .map((sw) => ({
+            time: isoToUnix(sw.timestamp) as Time,
+            position: (sw.is_high ? "aboveBar" : "belowBar") as "aboveBar" | "belowBar",
+            shape: "circle" as const,
+            color: sw.is_high ? "#fbbf24" : "#fbbf24",
+            text: sw.is_high ? `SH ${fmtPrice(sw.price)}` : `SL ${fmtPrice(sw.price)}`,
+            size: 0.5,
+          }))
+          .sort((a, b) => (a.time as number) - (b.time as number));
 
-      // Fit content
+        lc.createSeriesMarkers(series, markers);
+      }
+
       chart!.timeScale().fitContent();
 
-      // Initial overlay compute (delayed to let chart render)
       requestAnimationFrame(() => {
         computeOverlays();
       });
     };
 
     setup();
-  }, [data, tf, computeOverlays]);
+  }, [data, tf, showSwings, computeOverlays]);
 
-  // Update container size on mount
   useEffect(() => {
     if (chartContainerRef.current) {
       setContainerSize({
@@ -545,12 +597,19 @@ export default function ChartPage() {
     }
   }, []);
 
-  // ── HTF Bias badges ──────────────────────────────────────────────────────
+  // ── HTF Bias data ────────────────────────────────────────────────────────
 
-  const htfBiases = data
-    ? (["1D", "4H", "1H"] as const).map((key) => ({
+  const allTFs: Timeframe[] = ["1D", "4H", "1H", "5M"];
+  const biases = data
+    ? allTFs.map((key) => ({
         tf: key,
-        state: data[key]?.ms_state ?? "UNKNOWN",
+        state: (data[key] as TimeframeData)?.ms_state ?? "UNKNOWN",
+        obCount: (data[key] as TimeframeData)?.obs?.filter(
+          (o) => o.status === "FRESH" || o.status === "TESTED"
+        ).length ?? 0,
+        fvgCount: (data[key] as TimeframeData)?.fvgs?.filter(
+          (f) => f.status === "ACTIVE"
+        ).length ?? 0,
       }))
     : [];
 
@@ -558,7 +617,7 @@ export default function ChartPage() {
 
   if (error && !data) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4">
+      <div className="min-h-screen flex items-center justify-center p-4 bg-[#0a0a0a]">
         <div className="bg-red-900/20 border border-red-800 rounded-xl p-6 max-w-sm w-full text-center">
           <p className="text-red-400 font-bold">Connection Error</p>
           <p className="text-sm text-zinc-400 mt-2">{error}</p>
@@ -575,38 +634,38 @@ export default function ChartPage() {
 
   if (!data) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-[#0a0a0a]">
         <div className="animate-pulse text-zinc-500">Loading chart data...</div>
       </div>
     );
   }
 
+  const tfData = data[tf] as TimeframeData;
+
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col h-screen bg-[#0a0a0a] text-white">
       {/* ── Top Bar ─────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-zinc-800 bg-zinc-900/80 backdrop-blur-sm shrink-0">
-        <div className="flex items-center gap-4">
-          {/* Back link */}
+      <div className="flex items-center justify-between px-3 py-2 border-b border-zinc-800/80 shrink-0">
+        <div className="flex items-center gap-3">
           <a
             href="/"
-            className="text-zinc-500 hover:text-zinc-300 transition-colors flex items-center gap-1.5"
+            className="text-zinc-500 hover:text-zinc-300 transition-colors text-sm"
           >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-            </svg>
-            <span className="text-sm">Dashboard</span>
+            ← Dashboard
           </a>
 
+          <div className="h-4 w-px bg-zinc-800" />
+
           {/* Timeframe selector */}
-          <div className="flex items-center gap-1 bg-zinc-800/50 rounded-lg p-0.5">
+          <div className="flex items-center gap-0.5">
             {TIMEFRAMES.map((t) => (
               <button
                 key={t}
                 onClick={() => setTf(t)}
-                className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                className={`px-2.5 py-1 text-xs font-mono font-medium rounded transition-all ${
                   tf === t
                     ? "bg-zinc-700 text-white"
-                    : "text-zinc-500 hover:text-zinc-300"
+                    : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50"
                 }`}
               >
                 {t}
@@ -616,23 +675,47 @@ export default function ChartPage() {
         </div>
 
         <div className="flex items-center gap-3">
-          {/* HTF Bias */}
-          <div className="hidden sm:flex items-center gap-1.5">
-            {htfBiases.map((b) => (
-              <span
-                key={b.tf}
-                className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${msStateColor(b.state)}`}
-              >
-                {b.tf} {b.state === "BULLISH" ? "▲" : b.state === "BEARISH" ? "▼" : "●"}
-              </span>
-            ))}
+          {/* Toggle buttons */}
+          <div className="hidden sm:flex items-center gap-1">
+            <button
+              onClick={() => setShowOBs(!showOBs)}
+              className={`px-2 py-0.5 text-[10px] font-mono rounded transition-all ${
+                showOBs ? "bg-violet-500/20 text-violet-400 border border-violet-500/30" : "text-zinc-600 border border-zinc-800"
+              }`}
+            >
+              OB
+            </button>
+            <button
+              onClick={() => setShowFVGs(!showFVGs)}
+              className={`px-2 py-0.5 text-[10px] font-mono rounded transition-all ${
+                showFVGs ? "bg-sky-500/20 text-sky-400 border border-sky-500/30" : "text-zinc-600 border border-zinc-800"
+              }`}
+            >
+              FVG
+            </button>
+            <button
+              onClick={() => setShowSwings(!showSwings)}
+              className={`px-2 py-0.5 text-[10px] font-mono rounded transition-all ${
+                showSwings ? "bg-amber-500/20 text-amber-400 border border-amber-500/30" : "text-zinc-600 border border-zinc-800"
+              }`}
+            >
+              SW
+            </button>
+            <button
+              onClick={() => setShowInvalidated(!showInvalidated)}
+              className={`px-2 py-0.5 text-[10px] font-mono rounded transition-all ${
+                showInvalidated ? "bg-zinc-500/20 text-zinc-400 border border-zinc-500/30" : "text-zinc-600 border border-zinc-800"
+              }`}
+              title="Show invalidated OBs"
+            >
+              INV
+            </button>
           </div>
 
-          {/* Refresh indicator */}
+          {/* Live indicator */}
           <div className="flex items-center gap-1.5">
-            {error && <span className="text-[10px] text-red-400">{error}</span>}
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-[10px] text-zinc-500">
+            <span className="text-[10px] text-zinc-500 font-mono">
               {lastUpdate
                 ? `${Math.round((Date.now() - lastUpdate.getTime()) / 1000)}s`
                 : "..."}
@@ -641,32 +724,55 @@ export default function ChartPage() {
         </div>
       </div>
 
-      {/* ── HTF Bias mobile row ─────────────────────────────────────── */}
-      <div className="flex sm:hidden items-center gap-1.5 px-4 py-1.5 border-b border-zinc-800 bg-zinc-900/50">
-        <span className="text-[10px] text-zinc-500 mr-1">HTF:</span>
-        {htfBiases.map((b) => (
-          <span
-            key={b.tf}
-            className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${msStateColor(b.state)}`}
-          >
-            {b.tf} {b.state === "BULLISH" ? "▲" : b.state === "BEARISH" ? "▼" : "●"}
-          </span>
-        ))}
+      {/* ── HTF Bias Row ────────────────────────────────────────────── */}
+      <div className="flex items-center gap-4 px-3 py-1.5 border-b border-zinc-800/50 bg-zinc-900/30 shrink-0">
+        <span className="text-[10px] text-zinc-600 font-mono uppercase tracking-wider">HTF Bias</span>
+        <div className="flex items-center gap-2">
+          {biases.map((b) => (
+            <div key={b.tf} className="flex items-center gap-1.5">
+              <span
+                className="text-[11px] font-mono font-bold px-2 py-0.5 rounded"
+                style={{
+                  color: msColor(b.state),
+                  backgroundColor:
+                    b.state === "BULLISH"
+                      ? "rgba(34, 197, 94, 0.1)"
+                      : b.state === "BEARISH"
+                      ? "rgba(239, 68, 68, 0.1)"
+                      : "rgba(113, 113, 122, 0.1)",
+                  border: `1px solid ${
+                    b.state === "BULLISH"
+                      ? "rgba(34, 197, 94, 0.2)"
+                      : b.state === "BEARISH"
+                      ? "rgba(239, 68, 68, 0.2)"
+                      : "rgba(113, 113, 122, 0.2)"
+                  }`,
+                }}
+              >
+                {b.tf} {msLabel(b.state)}
+              </span>
+              <span className="text-[9px] text-zinc-600 font-mono">
+                {b.obCount}ob {b.fvgCount}fvg
+              </span>
+            </div>
+          ))}
+        </div>
+        {error && <span className="text-[10px] text-red-400 ml-auto">{error}</span>}
       </div>
 
       {/* ── Chart Area ──────────────────────────────────────────────── */}
       <div className="flex-1 relative min-h-0">
         <div ref={chartContainerRef} className="absolute inset-0" />
-        <ChartOverlay
-          rects={overlayRects}
+        <ZoneOverlay
+          zones={overlayZones}
           containerWidth={containerSize.w}
           containerHeight={containerSize.h}
         />
       </div>
 
-      {/* ── Structure Panel ─────────────────────────────────────────── */}
-      <div className="shrink-0 px-4 py-2 border-t border-zinc-800">
-        <StructurePanel data={data[tf]} />
+      {/* ── Bottom Info Panel ───────────────────────────────────────── */}
+      <div className="shrink-0 border-t border-zinc-800/50">
+        {tfData && <InfoPanel data={tfData} tf={tf} />}
       </div>
     </div>
   );
