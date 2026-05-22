@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useRef, useCallback } from "react";
+import { Suspense, useEffect, useState, useRef, useCallback, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import type {
   IChartApi,
   ISeriesApi,
@@ -307,7 +308,32 @@ function InfoPanel({ data, tf }: { data: TimeframeData; tf: string }) {
 
 // ── Main Chart Page ────────────────────────────────────────────────────────
 
-export default function ChartPage() {
+export default function ChartPageWrapper() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center h-screen bg-[#060608]">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-2 border-violet-500/30 border-t-violet-400 rounded-full animate-spin" />
+          <span className="text-zinc-600 text-sm">Loading chart...</span>
+        </div>
+      </div>
+    }>
+      <ChartPage />
+    </Suspense>
+  );
+}
+
+function ChartPage() {
+  const searchParams = useSearchParams();
+  const symbol = searchParams.get("symbol") || "BTCUSDT";
+  const symbolLabel = useMemo(() => {
+    const s = symbol.toUpperCase();
+    for (const q of ["USDT", "USDC", "BUSD", "USD"]) {
+      if (s.endsWith(q)) return `${s.slice(0, -q.length)}/${q}`;
+    }
+    return s;
+  }, [symbol]);
+
   const [data, setData] = useState<StructuresResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tf, setTf] = useState<Timeframe>("1H");
@@ -330,7 +356,7 @@ export default function ChartPage() {
 
   const fetchData = useCallback(async () => {
     try {
-      const res = await fetch("/api/structures", { cache: "no-store" });
+      const res = await fetch(`/api/structures?symbol=${symbol}`, { cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
       setData(json);
@@ -339,7 +365,7 @@ export default function ChartPage() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to fetch");
     }
-  }, []);
+  }, [symbol]);
 
   useEffect(() => {
     fetchData();
@@ -482,24 +508,24 @@ export default function ChartPage() {
       if (!chart) {
         chart = lc.createChart(container, {
           layout: {
-            background: { color: "#0a0a0a" },
-            textColor: "#71717a",
+            background: { color: "#060608" },
+            textColor: "#52525b",
             fontFamily: "system-ui, sans-serif",
             fontSize: 11,
           },
           grid: {
-            vertLines: { color: "rgba(63, 63, 70, 0.15)" },
-            horzLines: { color: "rgba(63, 63, 70, 0.15)" },
+            vertLines: { color: "rgba(63, 63, 70, 0.1)" },
+            horzLines: { color: "rgba(63, 63, 70, 0.1)" },
           },
           crosshair: {
-            vertLine: { color: "rgba(161, 161, 170, 0.3)", labelBackgroundColor: "#27272a" },
-            horzLine: { color: "rgba(161, 161, 170, 0.3)", labelBackgroundColor: "#27272a" },
+            vertLine: { color: "rgba(139, 92, 246, 0.2)", labelBackgroundColor: "#1c1c22" },
+            horzLine: { color: "rgba(139, 92, 246, 0.2)", labelBackgroundColor: "#1c1c22" },
           },
           rightPriceScale: {
-            borderColor: "rgba(63, 63, 70, 0.3)",
+            borderColor: "rgba(63, 63, 70, 0.2)",
           },
           timeScale: {
-            borderColor: "rgba(63, 63, 70, 0.3)",
+            borderColor: "rgba(63, 63, 70, 0.2)",
             timeVisible: true,
             secondsVisible: false,
           },
@@ -617,13 +643,13 @@ export default function ChartPage() {
 
   if (error && !data) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4 bg-[#0a0a0a]">
-        <div className="bg-red-900/20 border border-red-800 rounded-xl p-6 max-w-sm w-full text-center">
+      <div className="min-h-screen flex items-center justify-center p-4 bg-[#060608]">
+        <div className="card-static p-6 max-w-sm w-full text-center border-red-900/30">
           <p className="text-red-400 font-bold">Connection Error</p>
-          <p className="text-sm text-zinc-400 mt-2">{error}</p>
+          <p className="text-sm text-zinc-500 mt-2">{error}</p>
           <button
             onClick={fetchData}
-            className="mt-4 px-4 py-2 bg-zinc-800 rounded-lg text-sm hover:bg-zinc-700 transition"
+            className="mt-4 px-5 py-2 bg-zinc-800/80 border border-zinc-700/50 rounded-lg text-sm hover:bg-zinc-700/80 transition-all hover:border-zinc-600/50"
           >
             Retry
           </button>
@@ -634,7 +660,7 @@ export default function ChartPage() {
 
   if (!data) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0a0a0a]">
+      <div className="min-h-screen flex items-center justify-center bg-[#060608]">
         <div className="animate-pulse text-zinc-500">Loading chart data...</div>
       </div>
     );
@@ -643,29 +669,33 @@ export default function ChartPage() {
   const tfData = data[tf] as TimeframeData;
 
   return (
-    <div className="flex flex-col h-screen bg-[#0a0a0a] text-white">
+    <div className="flex flex-col h-screen bg-[#060608] text-white">
       {/* ── Top Bar ─────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-zinc-800/80 shrink-0">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-zinc-800/40 bg-zinc-950/60 glass shrink-0">
         <div className="flex items-center gap-3">
           <a
             href="/"
-            className="text-zinc-500 hover:text-zinc-300 transition-colors text-sm"
+            className="text-zinc-500 hover:text-violet-400 transition-colors duration-200 text-sm"
           >
             ← Dashboard
           </a>
 
-          <div className="h-4 w-px bg-zinc-800" />
+          <div className="h-4 w-px bg-zinc-800/60" />
+
+          <span className="text-xs font-mono font-bold text-zinc-300">{symbolLabel}</span>
+
+          <div className="h-4 w-px bg-zinc-800/60" />
 
           {/* Timeframe selector */}
-          <div className="flex items-center gap-0.5">
+          <div className="flex items-center gap-0.5 bg-zinc-900/50 rounded-lg p-0.5">
             {TIMEFRAMES.map((t) => (
               <button
                 key={t}
                 onClick={() => setTf(t)}
-                className={`px-2.5 py-1 text-xs font-mono font-medium rounded transition-all ${
+                className={`px-2.5 py-1 text-xs font-mono font-medium rounded-md transition-all duration-200 ${
                   tf === t
-                    ? "bg-zinc-700 text-white"
-                    : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50"
+                    ? "bg-violet-500/15 text-violet-300 shadow-[0_0_10px_-3px_rgba(139,92,246,0.2)]"
+                    : "text-zinc-600 hover:text-zinc-300 hover:bg-zinc-800/50"
                 }`}
               >
                 {t}
@@ -679,32 +709,40 @@ export default function ChartPage() {
           <div className="hidden sm:flex items-center gap-1">
             <button
               onClick={() => setShowOBs(!showOBs)}
-              className={`px-2 py-0.5 text-[10px] font-mono rounded transition-all ${
-                showOBs ? "bg-violet-500/20 text-violet-400 border border-violet-500/30" : "text-zinc-600 border border-zinc-800"
+              className={`px-2 py-0.5 text-[10px] font-mono rounded-md transition-all duration-200 ${
+                showOBs
+                  ? "bg-violet-500/15 text-violet-400 border border-violet-500/25 shadow-[0_0_8px_-3px_rgba(139,92,246,0.2)]"
+                  : "text-zinc-700 border border-zinc-800/50 hover:border-zinc-700/50 hover:text-zinc-500"
               }`}
             >
               OB
             </button>
             <button
               onClick={() => setShowFVGs(!showFVGs)}
-              className={`px-2 py-0.5 text-[10px] font-mono rounded transition-all ${
-                showFVGs ? "bg-sky-500/20 text-sky-400 border border-sky-500/30" : "text-zinc-600 border border-zinc-800"
+              className={`px-2 py-0.5 text-[10px] font-mono rounded-md transition-all duration-200 ${
+                showFVGs
+                  ? "bg-sky-500/15 text-sky-400 border border-sky-500/25 shadow-[0_0_8px_-3px_rgba(56,189,248,0.2)]"
+                  : "text-zinc-700 border border-zinc-800/50 hover:border-zinc-700/50 hover:text-zinc-500"
               }`}
             >
               FVG
             </button>
             <button
               onClick={() => setShowSwings(!showSwings)}
-              className={`px-2 py-0.5 text-[10px] font-mono rounded transition-all ${
-                showSwings ? "bg-amber-500/20 text-amber-400 border border-amber-500/30" : "text-zinc-600 border border-zinc-800"
+              className={`px-2 py-0.5 text-[10px] font-mono rounded-md transition-all duration-200 ${
+                showSwings
+                  ? "bg-amber-500/15 text-amber-400 border border-amber-500/25 shadow-[0_0_8px_-3px_rgba(251,191,36,0.2)]"
+                  : "text-zinc-700 border border-zinc-800/50 hover:border-zinc-700/50 hover:text-zinc-500"
               }`}
             >
               SW
             </button>
             <button
               onClick={() => setShowInvalidated(!showInvalidated)}
-              className={`px-2 py-0.5 text-[10px] font-mono rounded transition-all ${
-                showInvalidated ? "bg-zinc-500/20 text-zinc-400 border border-zinc-500/30" : "text-zinc-600 border border-zinc-800"
+              className={`px-2 py-0.5 text-[10px] font-mono rounded-md transition-all duration-200 ${
+                showInvalidated
+                  ? "bg-zinc-500/15 text-zinc-400 border border-zinc-500/25"
+                  : "text-zinc-700 border border-zinc-800/50 hover:border-zinc-700/50 hover:text-zinc-500"
               }`}
               title="Show invalidated OBs"
             >
@@ -714,8 +752,8 @@ export default function ChartPage() {
 
           {/* Live indicator */}
           <div className="flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-[10px] text-zinc-500 font-mono">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_6px_rgba(52,211,153,0.4)]" />
+            <span className="text-[10px] text-zinc-600 font-mono">
               {lastUpdate
                 ? `${Math.round((Date.now() - lastUpdate.getTime()) / 1000)}s`
                 : "..."}
@@ -725,8 +763,8 @@ export default function ChartPage() {
       </div>
 
       {/* ── HTF Bias Row ────────────────────────────────────────────── */}
-      <div className="flex items-center gap-4 px-3 py-1.5 border-b border-zinc-800/50 bg-zinc-900/30 shrink-0">
-        <span className="text-[10px] text-zinc-600 font-mono uppercase tracking-wider">HTF Bias</span>
+      <div className="flex items-center gap-4 px-3 py-1.5 border-b border-zinc-800/30 bg-zinc-950/40 shrink-0">
+        <span className="text-[10px] text-zinc-700 font-mono uppercase tracking-wider">HTF Bias</span>
         <div className="flex items-center gap-2">
           {biases.map((b) => (
             <div key={b.tf} className="flex items-center gap-1.5">
@@ -771,7 +809,7 @@ export default function ChartPage() {
       </div>
 
       {/* ── Bottom Info Panel ───────────────────────────────────────── */}
-      <div className="shrink-0 border-t border-zinc-800/50">
+      <div className="shrink-0 border-t border-zinc-800/30 bg-zinc-950/40">
         {tfData && <InfoPanel data={tfData} tf={tf} />}
       </div>
     </div>

@@ -4,6 +4,14 @@ import { useEffect, useState } from "react";
 
 const REFRESH_INTERVAL = 15000;
 
+const SYMBOLS = [
+  { id: "BTCUSDT", base: "BTC", quote: "USDT" },
+  { id: "ETHUSDT", base: "ETH", quote: "USDT" },
+  { id: "SOLUSDT", base: "SOL", quote: "USDT" },
+] as const;
+
+type SymbolId = (typeof SYMBOLS)[number]["id"];
+
 // ── Types ──────────────────────────────────────────────────────────────────
 
 interface Trade {
@@ -19,6 +27,7 @@ interface Trade {
   equity_after: number;
   position_size: number;
   confidence: number;
+  symbol?: string;
 }
 
 interface LiveTick {
@@ -33,6 +42,7 @@ interface LiveTick {
 }
 
 interface BotStatus {
+  symbol?: string;
   state: {
     equity: number;
     starting_capital: number;
@@ -56,6 +66,29 @@ interface BotStatus {
   equity_curve: { time: string; equity: number }[];
   recent_events: { time: string; event: string }[];
   phase: number;
+}
+
+// ── Symbol helpers ────────────────────────────────────────────────────────
+
+function parseSymbol(raw?: string): { base: string; quote: string } {
+  const s = (raw || "BTCUSDT").toUpperCase();
+  const stableCoins = ["USDT", "USDC", "BUSD", "TUSD", "USD"];
+  for (const q of stableCoins) {
+    if (s.endsWith(q)) {
+      return { base: s.slice(0, -q.length), quote: q };
+    }
+  }
+  return { base: s.slice(0, 3), quote: s.slice(3) };
+}
+
+function formatPrice(price: number): string {
+  if (price >= 1000) {
+    return price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  if (price >= 1) {
+    return price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+  }
+  return price.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 8 });
 }
 
 // ── Session Clocks ─────────────────────────────────────────────────────────
@@ -103,26 +136,26 @@ function SessionBar() {
   const clocks = useSessionClocks();
 
   return (
-    <div className="flex items-center gap-1 sm:gap-3">
+    <div className="flex items-center gap-1 sm:gap-2">
       {clocks.map((c) => (
         <div
           key={c.name}
-          className={`flex items-center gap-1.5 px-2 sm:px-3 py-1 rounded-lg border transition-colors ${
+          className={`flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-lg border transition-all duration-300 ${
             c.isOpen
-              ? "bg-emerald-500/5 border-emerald-500/20"
-              : "bg-zinc-900/50 border-zinc-800/50"
+              ? "bg-emerald-500/8 border-emerald-500/20 shadow-[0_0_12px_-4px_rgba(52,211,153,0.15)]"
+              : "bg-zinc-900/40 border-zinc-800/40"
           }`}
         >
           <span
-            className={`w-1.5 h-1.5 rounded-full ${
-              c.isOpen ? "bg-emerald-400 animate-pulse" : "bg-zinc-600"
+            className={`w-1.5 h-1.5 rounded-full transition-colors ${
+              c.isOpen ? "bg-emerald-400 animate-pulse" : "bg-zinc-700"
             }`}
           />
           <span className="text-[10px] text-zinc-500 hidden sm:inline">{c.name}</span>
           <span className="text-[10px] text-zinc-500 sm:hidden">{c.flag}</span>
           <span
-            className={`text-xs font-mono font-medium tabular-nums ${
-              c.isOpen ? "text-emerald-400" : "text-zinc-500"
+            className={`text-xs font-mono font-medium tabular-nums transition-colors ${
+              c.isOpen ? "text-emerald-400" : "text-zinc-600"
             }`}
           >
             {c.timeStr}
@@ -141,37 +174,48 @@ function StatCard({
   sub,
   accent,
   large,
+  delay = 0,
 }: {
   label: string;
   value: string;
   sub?: string;
   accent?: "green" | "red" | "yellow" | "default";
   large?: boolean;
+  delay?: number;
 }) {
   const colors = {
     green: "text-emerald-400",
     red: "text-red-400",
     yellow: "text-amber-400",
-    default: "text-white",
+    default: "text-zinc-100",
+  };
+  const glows = {
+    green: "hover:shadow-[0_0_20px_-6px_rgba(52,211,153,0.15)]",
+    red: "hover:shadow-[0_0_20px_-6px_rgba(248,113,113,0.15)]",
+    yellow: "hover:shadow-[0_0_20px_-6px_rgba(251,191,36,0.12)]",
+    default: "",
   };
   return (
-    <div className="bg-zinc-900/80 border border-zinc-800/60 rounded-xl p-4">
-      <p className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium">{label}</p>
-      <p className={`${large ? "text-3xl" : "text-xl"} font-bold mt-1 tabular-nums ${colors[accent || "default"]}`}>
+    <div
+      className={`card p-4 animate-fade-in ${glows[accent || "default"]}`}
+      style={{ animationDelay: `${delay}ms` }}
+    >
+      <p className="text-xs text-zinc-500 uppercase tracking-wider font-medium">{label}</p>
+      <p className={`${large ? "text-4xl" : "text-2xl"} font-bold mt-1.5 tabular-nums ${colors[accent || "default"]}`}>
         {value}
       </p>
-      {sub && <p className="text-[11px] text-zinc-500 mt-1">{sub}</p>}
+      {sub && <p className="text-xs text-zinc-600 mt-1">{sub}</p>}
     </div>
   );
 }
 
-function LiveBanner({ live }: { live?: LiveTick }) {
+function LiveBanner({ live, symbol }: { live?: LiveTick; symbol: { base: string; quote: string } }) {
   if (!live || !live.last_tick) {
     return (
-      <div className="bg-zinc-900/80 border border-zinc-800/60 rounded-xl p-5">
+      <div className="card-static p-5 animate-fade-in">
         <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-zinc-600" />
-          <span className="text-sm text-zinc-500">Waiting for bot data...</span>
+          <span className="w-2 h-2 rounded-full bg-zinc-700" />
+          <span className="text-sm text-zinc-600">Waiting for bot data...</span>
         </div>
       </div>
     );
@@ -191,15 +235,19 @@ function LiveBanner({ live }: { live?: LiveTick }) {
     signal_pending_fill: "Signal found - waiting for fill",
     daily_limit_reached: "Daily trade limit reached",
     daily_sl_limit: "Daily SL limit reached",
+    blocked_hour: "Blocked hour (NY 15:00)",
     idle: "Idle",
   };
 
-  const actionText = live.action.startsWith("cooldown")
-    ? `Cooldown ${live.action.match(/\(.*\)/)?.[0] || ""}`
-    : actionLabels[live.action] || live.action;
+  const actionText = !isAlive
+    ? "Bot offline"
+    : live.action.startsWith("cooldown")
+      ? `Cooldown ${live.action.match(/\(.*\)/)?.[0] || ""}`
+      : actionLabels[live.action] || live.action;
 
-  const actionColor =
-    live.action === "scanning"
+  const actionColor = !isAlive
+    ? "text-red-400"
+    : live.action === "scanning"
       ? "text-blue-400"
       : live.action === "position_open"
         ? "text-amber-400"
@@ -210,13 +258,18 @@ function LiveBanner({ live }: { live?: LiveTick }) {
             : "text-zinc-400";
 
   return (
-    <div className="bg-zinc-900/80 border border-zinc-800/60 rounded-xl p-5">
-      <div className="flex items-center justify-between">
+    <div className="card-static p-5 animate-fade-in relative overflow-hidden">
+      {isAlive && (
+        <div className="absolute inset-0 bg-gradient-to-r from-violet-500/[0.03] via-transparent to-emerald-500/[0.03] pointer-events-none" />
+      )}
+      <div className="flex items-center justify-between relative">
         <div>
-          <p className="text-3xl font-bold tabular-nums tracking-tight">
-            ${live.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          <p className="text-3xl font-bold tabular-nums tracking-tight text-zinc-50">
+            ${formatPrice(live.price)}
           </p>
-          <p className="text-[11px] text-zinc-500 mt-0.5">BTC / USDT</p>
+          <p className="text-[11px] text-zinc-600 mt-1 tracking-wide">
+            {symbol.base} / {symbol.quote}
+          </p>
         </div>
         <div className="text-right">
           <div className="flex items-center gap-2 justify-end">
@@ -224,22 +277,22 @@ function LiveBanner({ live }: { live?: LiveTick }) {
               className={`w-2 h-2 rounded-full ${
                 isAlive
                   ? live.in_killzone
-                    ? "bg-emerald-400 animate-pulse"
-                    : "bg-emerald-400"
-                  : "bg-red-400"
+                    ? "bg-emerald-400 animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.5)]"
+                    : "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.3)]"
+                  : "bg-red-400 shadow-[0_0_6px_rgba(248,113,113,0.3)]"
               }`}
             />
             <span className={`text-sm font-medium ${actionColor}`}>
               {actionText}
             </span>
           </div>
-          <p className="text-[11px] text-zinc-500 mt-0.5">
+          <p className="text-[11px] text-zinc-600 mt-1">
             NY {live.ny_hour}:00 · {isAlive ? `${tickAge}s ago` : "stale"}
           </p>
         </div>
       </div>
       {live.has_position && (
-        <div className="mt-4 pt-3 border-t border-zinc-800/50 flex justify-between items-center">
+        <div className="mt-4 pt-3 border-t border-zinc-800/40 flex justify-between items-center relative">
           <span className="text-xs text-zinc-500">Unrealized P&L</span>
           <span
             className={`text-lg font-bold tabular-nums ${
@@ -257,11 +310,11 @@ function LiveBanner({ live }: { live?: LiveTick }) {
 function PhaseIndicator({ phase, equity }: { phase: number; equity: number }) {
   const progress = phase === 1 ? Math.min((equity / 5000) * 100, 100) : 100;
   return (
-    <div className="bg-zinc-900/80 border border-zinc-800/60 rounded-xl p-4">
+    <div className="card p-4 animate-fade-in" style={{ animationDelay: "50ms" }}>
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium">Phase</p>
-          <p className="text-xl font-bold mt-1">
+          <p className="text-xs text-zinc-500 uppercase tracking-wider font-medium">Phase</p>
+          <p className="text-2xl font-bold mt-1.5">
             {phase === 1 ? (
               <span className="text-amber-400">1 - Building</span>
             ) : (
@@ -270,10 +323,10 @@ function PhaseIndicator({ phase, equity }: { phase: number; equity: number }) {
           </p>
         </div>
         <div className="text-right">
-          <p className="text-[11px] text-zinc-500">
+          <p className="text-xs text-zinc-600">
             {phase === 1 ? "Compound 13%" : "Flat $1,000/trade"}
           </p>
-          <p className="text-[11px] text-zinc-500">
+          <p className="text-xs text-zinc-600">
             {phase === 1
               ? `$${equity.toLocaleString()} / $5,000`
               : "20% of $5k"}
@@ -281,10 +334,14 @@ function PhaseIndicator({ phase, equity }: { phase: number; equity: number }) {
         </div>
       </div>
       {phase === 1 && (
-        <div className="mt-3 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+        <div className="mt-3 h-1.5 bg-zinc-800/80 rounded-full overflow-hidden">
           <div
-            className="h-full bg-gradient-to-r from-amber-500 to-amber-400 rounded-full transition-all duration-500"
-            style={{ width: `${progress}%` }}
+            className="h-full rounded-full transition-all duration-700 ease-out"
+            style={{
+              width: `${progress}%`,
+              background: "linear-gradient(90deg, #f59e0b, #fbbf24, #fde68a)",
+              boxShadow: "0 0 12px rgba(251, 191, 36, 0.3)",
+            }}
           />
         </div>
       )}
@@ -292,10 +349,10 @@ function PhaseIndicator({ phase, equity }: { phase: number; equity: number }) {
   );
 }
 
-function TradeRow({ trade }: { trade: Trade }) {
+function TradeRow({ trade, index }: { trade: Trade; index: number }) {
   const isWin = trade.pnl > 0;
   const time = trade.exit_time
-    ? new Date(trade.exit_time).toLocaleString("en-US", {
+    ? new Date(trade.exit_time + (trade.exit_time.endsWith("Z") ? "" : "Z")).toLocaleString("en-US", {
         month: "short",
         day: "numeric",
         hour: "2-digit",
@@ -304,31 +361,34 @@ function TradeRow({ trade }: { trade: Trade }) {
     : "";
 
   return (
-    <div className="flex items-center justify-between py-3 border-b border-zinc-800/30 last:border-0">
+    <div
+      className="flex items-center justify-between py-3 border-b border-zinc-800/20 last:border-0 group transition-colors hover:bg-zinc-800/20 -mx-2 px-2 rounded-lg animate-fade-in"
+      style={{ animationDelay: `${index * 30}ms` }}
+    >
       <div className="flex items-center gap-3">
         <div
-          className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold ${
+          className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 transition-shadow ${
             trade.direction === "LONG"
-              ? "bg-emerald-400/10 text-emerald-400"
-              : "bg-red-400/10 text-red-400"
+              ? "bg-emerald-400/10 text-emerald-400 group-hover:shadow-[0_0_10px_-2px_rgba(52,211,153,0.2)]"
+              : "bg-red-400/10 text-red-400 group-hover:shadow-[0_0_10px_-2px_rgba(248,113,113,0.2)]"
           }`}
         >
           {trade.direction === "LONG" ? "L" : "S"}
         </div>
-        <div>
-          <p className="text-sm font-medium tabular-nums">
-            ${trade.entry_price.toLocaleString()}
+        <div className="min-w-0">
+          <p className="text-sm font-medium tabular-nums text-zinc-200">
+            ${formatPrice(trade.entry_price)}
           </p>
-          <p className="text-[11px] text-zinc-500">{time}</p>
+          <p className="text-[11px] text-zinc-600">{time}</p>
         </div>
       </div>
-      <div className="text-right">
+      <div className="text-right shrink-0">
         <p
           className={`text-sm font-bold tabular-nums ${isWin ? "text-emerald-400" : "text-red-400"}`}
         >
           {isWin ? "+" : ""}${trade.pnl.toFixed(2)}
         </p>
-        <p className="text-[11px] text-zinc-500">
+        <p className="text-[11px] text-zinc-600">
           {trade.rr.toFixed(1)}R &middot; {trade.exit_reason}
         </p>
       </div>
@@ -345,11 +405,11 @@ function EquityChart({
 }) {
   if (data.length === 0) {
     return (
-      <div className="bg-zinc-900/80 border border-zinc-800/60 rounded-xl p-4 h-full flex flex-col">
+      <div className="card-static p-4 flex flex-col animate-fade-in" style={{ animationDelay: "100ms" }}>
         <p className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium mb-3">
           Equity Curve
         </p>
-        <div className="flex-1 flex items-center justify-center text-zinc-600 text-sm min-h-[160px]">
+        <div className="flex items-center justify-center text-zinc-700 text-sm h-[160px]">
           No trades yet
         </div>
       </div>
@@ -373,13 +433,14 @@ function EquityChart({
 
   const lastEquity = values[values.length - 1];
   const isUp = lastEquity >= startingCapital;
+  const lineColor = isUp ? "#34d399" : "#f87171";
 
   return (
-    <div className="bg-zinc-900/80 border border-zinc-800/60 rounded-xl p-4 h-full flex flex-col">
+    <div className="card-static p-4 flex flex-col animate-fade-in" style={{ animationDelay: "100ms" }}>
       <p className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium mb-3">
         Equity Curve
       </p>
-      <div className="flex-1 min-h-[160px]">
+      <div className="h-[160px]">
         <svg
           viewBox={`0 0 ${w} ${h}`}
           className="w-full h-full"
@@ -387,29 +448,32 @@ function EquityChart({
         >
           <defs>
             <linearGradient id="eqGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop
-                offset="0%"
-                stopColor={isUp ? "#34d399" : "#f87171"}
-                stopOpacity="0.25"
-              />
-              <stop
-                offset="100%"
-                stopColor={isUp ? "#34d399" : "#f87171"}
-                stopOpacity="0"
-              />
+              <stop offset="0%" stopColor={lineColor} stopOpacity="0.2" />
+              <stop offset="60%" stopColor={lineColor} stopOpacity="0.05" />
+              <stop offset="100%" stopColor={lineColor} stopOpacity="0" />
             </linearGradient>
+            <filter id="glow">
+              <feGaussianBlur stdDeviation="1.5" result="blur" />
+              <feMerge>
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
           </defs>
           <polygon points={`0,${h} ${points} ${w},${h}`} fill="url(#eqGrad)" />
           <polyline
             points={points}
             fill="none"
-            stroke={isUp ? "#34d399" : "#f87171"}
+            stroke={lineColor}
             strokeWidth="1.5"
             vectorEffect="non-scaling-stroke"
+            filter="url(#glow)"
+            strokeLinecap="round"
+            strokeLinejoin="round"
           />
         </svg>
       </div>
-      <div className="flex justify-between mt-2 text-[10px] text-zinc-600 tabular-nums">
+      <div className="flex justify-between mt-2 text-[10px] text-zinc-700 tabular-nums">
         <span>${min.toFixed(0)}</span>
         <span>${max.toFixed(0)}</span>
       </div>
@@ -419,14 +483,18 @@ function EquityChart({
 
 // ── Main Dashboard ─────────────────────────────────────────────────────────
 
+const EVENTS_PER_PAGE = 10;
+
 export default function Dashboard() {
+  const [activeSymbol, setActiveSymbol] = useState<SymbolId>("BTCUSDT");
   const [data, setData] = useState<BotStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+  const [eventPage, setEventPage] = useState(0);
 
-  async function fetchData() {
+  async function fetchData(sym: SymbolId) {
     try {
-      const res = await fetch("/api/status", { cache: "no-store" });
+      const res = await fetch(`/api/status?symbol=${sym}`, { cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
       setData(json);
@@ -438,20 +506,27 @@ export default function Dashboard() {
   }
 
   useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, REFRESH_INTERVAL);
+    setData(null);
+    setEventPage(0);
+    fetchData(activeSymbol);
+    const interval = setInterval(() => fetchData(activeSymbol), REFRESH_INTERVAL);
     return () => clearInterval(interval);
-  }, []);
+  }, [activeSymbol]);
 
   if (error && !data) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
-        <div className="bg-red-900/20 border border-red-800 rounded-xl p-6 max-w-sm w-full text-center">
+        <div className="card-static p-6 max-w-sm w-full text-center border-red-900/30">
+          <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center mx-auto mb-3">
+            <svg className="w-5 h-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+            </svg>
+          </div>
           <p className="text-red-400 font-bold">Connection Error</p>
-          <p className="text-sm text-zinc-400 mt-2">{error}</p>
+          <p className="text-sm text-zinc-500 mt-2">{error}</p>
           <button
-            onClick={fetchData}
-            className="mt-4 px-4 py-2 bg-zinc-800 rounded-lg text-sm hover:bg-zinc-700 transition"
+            onClick={() => fetchData(activeSymbol)}
+            className="mt-4 px-5 py-2 bg-zinc-800/80 border border-zinc-700/50 rounded-lg text-sm hover:bg-zinc-700/80 transition-all hover:border-zinc-600/50"
           >
             Retry
           </button>
@@ -463,42 +538,69 @@ export default function Dashboard() {
   if (!data) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-pulse text-zinc-500">Loading...</div>
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-2 border-violet-500/30 border-t-violet-400 rounded-full animate-spin" />
+          <span className="text-zinc-600 text-sm">Loading...</span>
+        </div>
       </div>
     );
   }
 
   const { state, stats, trades, equity_curve } = data;
+  const symbol = parseSymbol(data.symbol || activeSymbol);
   const drawdownPct =
     state.peak_equity > 0
       ? ((state.peak_equity - state.equity) / state.peak_equity) * 100
       : 0;
 
   return (
-    <main className="min-h-screen">
+    <main className="min-h-screen flex flex-col">
       {/* ── Header ──────────────────────────────────────────────────── */}
-      <header className="border-b border-zinc-800/60 bg-zinc-900/30 backdrop-blur-sm sticky top-0 z-10">
+      <header className="border-b border-zinc-800/40 bg-zinc-950/60 glass sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="flex items-center justify-between h-14">
             <div className="flex items-center gap-4">
               <div>
                 <h1 className="text-base font-bold tracking-tight flex items-center gap-2">
-                  <span className="text-violet-400">SOOB</span>
-                  <span className="text-zinc-400 font-normal text-sm hidden sm:inline">Terminal</span>
+                  <span className="text-violet-400" style={{ textShadow: "0 0 20px rgba(139, 92, 246, 0.3)" }}>SOOB</span>
+                  <span className="text-zinc-500 font-normal text-sm hidden sm:inline">Terminal</span>
                 </h1>
               </div>
-              <div className="h-5 w-px bg-zinc-800 hidden sm:block" />
-              <span className="text-[10px] text-zinc-600 font-mono uppercase tracking-widest hidden sm:inline">
-                Paper Trading
-              </span>
+              <div className="h-5 w-px bg-zinc-800/60" />
+              <div className="flex items-center gap-0.5 bg-zinc-900/50 rounded-lg p-0.5">
+                {SYMBOLS.map((s) => (
+                  <button
+                    key={s.id}
+                    onClick={() => setActiveSymbol(s.id)}
+                    className={`px-2.5 py-1 text-xs font-mono font-medium rounded-md transition-all duration-200 ${
+                      activeSymbol === s.id
+                        ? "bg-violet-500/15 text-violet-300 shadow-[0_0_10px_-3px_rgba(139,92,246,0.2)]"
+                        : "text-zinc-600 hover:text-zinc-300 hover:bg-zinc-800/50"
+                    }`}
+                  >
+                    {s.base}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div className="flex items-center gap-3">
-              <SessionBar />
-              <div className="h-5 w-px bg-zinc-800" />
+              <div className="hidden md:block">
+                <SessionBar />
+              </div>
+              <div className="h-5 w-px bg-zinc-800/60 hidden md:block" />
               <a
-                href="/chart"
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800/60 border border-zinc-700/40 hover:bg-zinc-700/60 transition-colors text-zinc-400 hover:text-white"
+                href="/overview"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800/40 border border-zinc-700/30 hover:bg-violet-500/10 hover:border-violet-500/20 transition-all duration-200 text-zinc-400 hover:text-violet-300"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" />
+                </svg>
+                <span className="text-xs font-medium">Overview</span>
+              </a>
+              <a
+                href={`/chart?symbol=${activeSymbol}`}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800/40 border border-zinc-700/30 hover:bg-violet-500/10 hover:border-violet-500/20 transition-all duration-200 text-zinc-400 hover:text-violet-300"
               >
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
@@ -511,30 +613,32 @@ export default function Dashboard() {
       </header>
 
       {/* ── Dashboard Body ──────────────────────────────────────────── */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 w-full flex-1">
 
         {/* Live Banner — full width */}
-        <LiveBanner live={state.live} />
+        <LiveBanner live={state.live} symbol={symbol} />
 
-        {/* Main grid: 3 columns on desktop */}
+        {/* Main grid */}
         <div className="mt-5 grid grid-cols-1 lg:grid-cols-12 gap-4">
 
           {/* ── Left Column: Stats ──────────────────────────────────── */}
-          <div className="lg:col-span-4 space-y-4">
+          <div className="lg:col-span-4 flex flex-col gap-4 order-1">
             <PhaseIndicator phase={data.phase} equity={state.equity} />
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-3 lg:flex-1 lg:grid-rows-2">
               <StatCard
                 label="Equity"
                 value={`$${state.equity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                 sub={`Peak: $${state.peak_equity.toLocaleString()}`}
                 accent={state.equity >= state.starting_capital ? "green" : "red"}
+                delay={100}
               />
               <StatCard
                 label="Total P&L"
                 value={`${stats.total_pnl >= 0 ? "+" : ""}$${stats.total_pnl.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
                 sub={`${stats.total_trades} trades`}
                 accent={stats.total_pnl >= 0 ? "green" : "red"}
+                delay={150}
               />
               <StatCard
                 label="Win Rate"
@@ -547,6 +651,7 @@ export default function Dashboard() {
                       ? "yellow"
                       : "red"
                 }
+                delay={200}
               />
               <StatCard
                 label="Drawdown"
@@ -555,6 +660,7 @@ export default function Dashboard() {
                 accent={
                   drawdownPct > 20 ? "red" : drawdownPct > 10 ? "yellow" : "green"
                 }
+                delay={250}
               />
             </div>
 
@@ -562,6 +668,7 @@ export default function Dashboard() {
               <StatCard
                 label="Avg RR"
                 value={stats.avg_rr > 0 ? `${stats.avg_rr}R` : "--"}
+                delay={300}
               />
               <StatCard
                 label="Best"
@@ -569,6 +676,7 @@ export default function Dashboard() {
                   stats.best_trade > 0 ? `+$${stats.best_trade.toFixed(0)}` : "--"
                 }
                 accent="green"
+                delay={350}
               />
               <StatCard
                 label="Worst"
@@ -578,57 +686,95 @@ export default function Dashboard() {
                     : "--"
                 }
                 accent="red"
+                delay={400}
               />
             </div>
           </div>
 
           {/* ── Center Column: Equity + Activity ────────────────────── */}
-          <div className="lg:col-span-4 space-y-4">
+          <div className="lg:col-span-4 flex flex-col gap-4 order-2">
             <EquityChart
               data={equity_curve}
               startingCapital={state.starting_capital}
             />
 
-            {/* Activity Log */}
-            <div className="bg-zinc-900/80 border border-zinc-800/60 rounded-xl p-4">
-              <p className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium mb-3">
-                Activity Log
-              </p>
-              {data.recent_events.length === 0 ? (
-                <p className="text-center text-zinc-600 text-sm py-4">No events</p>
-              ) : (
-                <div className="space-y-1.5 max-h-[240px] overflow-y-auto">
-                  {[...data.recent_events]
-                    .reverse()
-                    .slice(0, 15)
-                    .map((evt, i) => (
-                      <div key={i} className="flex justify-between text-[11px] gap-4">
-                        <span className="text-zinc-600 font-mono tabular-nums whitespace-nowrap">
-                          {new Date(evt.time).toLocaleTimeString("en-US", {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                            second: "2-digit",
-                            hour12: false,
-                          })}
-                        </span>
-                        <span className="text-zinc-400 truncate">{evt.event}</span>
+            {/* Activity Log — paginated, fills remaining height */}
+            <div className="card-static p-4 animate-fade-in lg:flex-1 flex flex-col" style={{ animationDelay: "150ms" }}>
+              {(() => {
+                const allEvents = [...data.recent_events].reverse();
+                const totalPages = Math.max(1, Math.ceil(allEvents.length / EVENTS_PER_PAGE));
+                const safePage = Math.min(eventPage, totalPages - 1);
+                const pageEvents = allEvents.slice(
+                  safePage * EVENTS_PER_PAGE,
+                  (safePage + 1) * EVENTS_PER_PAGE
+                );
+
+                return (
+                  <>
+                    <div className="flex items-center justify-between mb-3">
+                      <p className="text-xs text-zinc-500 uppercase tracking-wider font-medium">
+                        Activity Log
+                      </p>
+                      {allEvents.length > EVENTS_PER_PAGE && (
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => setEventPage(Math.max(0, safePage - 1))}
+                            disabled={safePage === 0}
+                            className="px-1.5 py-0.5 text-[11px] text-zinc-500 hover:text-zinc-300 disabled:text-zinc-800 disabled:cursor-default transition-colors"
+                          >
+                            ←
+                          </button>
+                          <span className="text-[11px] text-zinc-600 tabular-nums">
+                            {safePage + 1}/{totalPages}
+                          </span>
+                          <button
+                            onClick={() => setEventPage(Math.min(totalPages - 1, safePage + 1))}
+                            disabled={safePage >= totalPages - 1}
+                            className="px-1.5 py-0.5 text-[11px] text-zinc-500 hover:text-zinc-300 disabled:text-zinc-800 disabled:cursor-default transition-colors"
+                          >
+                            →
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    {allEvents.length === 0 ? (
+                      <p className="text-center text-zinc-700 text-sm py-4 flex-1 flex items-center justify-center">No events</p>
+                    ) : (
+                      <div className="space-y-0.5 flex-1">
+                        {pageEvents.map((evt, i) => (
+                          <div
+                            key={`${safePage}-${i}`}
+                            className="flex justify-between text-[11px] gap-3 py-1 px-2 -mx-2 rounded-md hover:bg-zinc-800/30 transition-colors"
+                          >
+                            <span className="text-zinc-700 font-mono tabular-nums whitespace-nowrap">
+                              {new Date(evt.time + (evt.time.endsWith("Z") ? "" : "Z")).toLocaleTimeString("en-US", {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                                second: "2-digit",
+                                hour12: false,
+                              })}
+                            </span>
+                            <span className="text-zinc-400 truncate">{evt.event}</span>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                </div>
-              )}
+                    )}
+                  </>
+                );
+              })()}
             </div>
           </div>
 
-          {/* ── Right Column: Trades ────────────────────────────────── */}
-          <div className="lg:col-span-4">
-            <div className="bg-zinc-900/80 border border-zinc-800/60 rounded-xl p-4 h-full">
+          {/* ── Right Column: Recent Trades ─────────────────────────── */}
+          <div className="lg:col-span-4 order-3">
+            <div className="card-static p-4 lg:h-full flex flex-col animate-fade-in" style={{ animationDelay: "200ms" }}>
               <p className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium mb-3">
                 Recent Trades
               </p>
               {trades.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 text-center">
-                  <div className="w-12 h-12 rounded-full bg-zinc-800/50 flex items-center justify-center mb-3">
-                    <svg className="w-5 h-5 text-zinc-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <div className="flex flex-col items-center justify-center flex-1 py-12 text-center">
+                  <div className="w-12 h-12 rounded-full bg-zinc-800/40 flex items-center justify-center mb-3">
+                    <svg className="w-5 h-5 text-zinc-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
                     </svg>
                   </div>
@@ -636,10 +782,10 @@ export default function Dashboard() {
                   <p className="text-zinc-700 text-xs mt-1">Bot is scanning for setups</p>
                 </div>
               ) : (
-                <div className="max-h-[480px] overflow-y-auto">
+                <div className="overflow-y-auto flex-1 pr-1">
                   {[...trades]
                     .reverse()
-                    .map((trade, i) => <TradeRow key={i} trade={trade} />)}
+                    .map((trade, i) => <TradeRow key={i} trade={trade} index={i} />)}
                 </div>
               )}
             </div>
@@ -648,9 +794,9 @@ export default function Dashboard() {
       </div>
 
       {/* ── Footer ──────────────────────────────────────────────────── */}
-      <footer className="border-t border-zinc-800/30 mt-8">
+      <footer className="border-t border-zinc-800/20 mt-auto">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
-          <p className="text-[10px] text-zinc-700 font-mono">
+          <p className="text-[10px] text-zinc-700 font-mono tracking-wide">
             PAPER MODE — No real money at risk
           </p>
           {lastUpdate && (
