@@ -8,7 +8,14 @@ export async function GET(request: Request) {
   if (symbol) url.searchParams.set("symbol", symbol);
   if (prefix) url.searchParams.set("prefix", prefix);
 
-  const res = await fetch(url, { cache: "no-store" });
-  const data = await res.json();
-  return Response.json(data);
+  try {
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) {
+      return Response.json({ error: `Backend returned ${res.status}` }, { status: 502 });
+    }
+    const data = await res.json();
+    return Response.json(data);
+  } catch {
+    return Response.json({ error: "Backend unreachable" }, { status: 502 });
+  }
 }
