@@ -9,6 +9,7 @@ type SymbolId = (typeof SYMBOLS)[number];
 interface LiveTick {
   price: number;
   action: string;
+  thinking: string;
   in_killzone: boolean;
   ny_hour: number;
   last_tick: string;
@@ -147,6 +148,16 @@ function SymbolCard({ symbol, data }: { symbol: SymbolId; data: BotStatus | null
               {uPnl >= 0 ? "+" : ""}${uPnl.toFixed(2)} ({rr >= 0 ? "+" : ""}{rr.toFixed(1)}R)
             </span>
           </div>
+        </div>
+      )}
+
+      {/* Thinking */}
+      {!isOffline && live?.thinking && (
+        <div className="rounded-lg bg-zinc-900/50 border border-zinc-800/40 px-3 py-2">
+          <p className="text-[11px] text-zinc-400 font-mono leading-relaxed">
+            <span className="text-violet-400/70">&#x25B6;</span>{" "}
+            {live.thinking}
+          </p>
         </div>
       )}
 

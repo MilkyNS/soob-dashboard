@@ -33,6 +33,7 @@ interface Trade {
 interface LiveTick {
   price: number;
   action: string;
+  thinking: string;
   in_killzone: boolean;
   ny_hour: number;
   last_tick: string;
@@ -301,6 +302,14 @@ function LiveBanner({ live, symbol }: { live?: LiveTick; symbol: { base: string;
           >
             {live.unrealized_pnl >= 0 ? "+" : ""}${live.unrealized_pnl.toFixed(2)} ({live.current_rr >= 0 ? "+" : ""}{live.current_rr.toFixed(1)}R)
           </span>
+        </div>
+      )}
+      {isAlive && live.thinking && (
+        <div className="mt-3 pt-3 border-t border-zinc-800/40 relative">
+          <p className="text-xs text-zinc-500 font-mono leading-relaxed">
+            <span className="text-violet-400/70">&#x25B6;</span>{" "}
+            {live.thinking}
+          </p>
         </div>
       )}
     </div>
