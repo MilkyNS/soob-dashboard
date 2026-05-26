@@ -20,6 +20,8 @@ interface Trade {
   direction: string;
   entry_price: number;
   exit_price: number;
+  sl_price: number;
+  original_sl: number;
   pnl: number;
   rr: number;
   exit_reason: string;
@@ -27,6 +29,7 @@ interface Trade {
   equity_after: number;
   position_size: number;
   confidence: number;
+  partial_closed: boolean;
   symbol?: string;
 }
 
@@ -358,9 +361,10 @@ function PhaseIndicator({ phase, equity }: { phase: number; equity: number }) {
   );
 }
 
-function TradeRow({ trade, index }: { trade: Trade; index: number }) {
+function TradeRow({ trade, index, expanded, onToggle }: { trade: Trade; index: number; expanded: boolean; onToggle: () => void }) {
   const isWin = trade.pnl > 0;
-  const time = trade.exit_time
+  const dir = trade.direction === "BULLISH" ? "LONG" : "SHORT";
+  const exitTime = trade.exit_time
     ? new Date(trade.exit_time + (trade.exit_time.endsWith("Z") ? "" : "Z")).toLocaleString("en-US", {
         month: "short",
         day: "numeric",
@@ -368,39 +372,122 @@ function TradeRow({ trade, index }: { trade: Trade; index: number }) {
         minute: "2-digit",
       })
     : "";
+  const entryTime = trade.entry_time
+    ? new Date(trade.entry_time + (trade.entry_time.endsWith("Z") ? "" : "Z")).toLocaleString("en-US", {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : "";
+
+  const slDist = Math.abs(trade.entry_price - (trade.sl_price || trade.original_sl || 0));
+  const slPct = trade.entry_price > 0 ? (slDist / trade.entry_price) * 100 : 0;
+  const notional = (trade.position_size || 0) * trade.entry_price;
+
+  const durationMs = trade.entry_time && trade.exit_time
+    ? new Date(trade.exit_time + "Z").getTime() - new Date(trade.entry_time + "Z").getTime()
+    : 0;
+  const durationMin = Math.round(durationMs / 60000);
+  const durationStr = durationMin >= 60
+    ? `${Math.floor(durationMin / 60)}h ${durationMin % 60}m`
+    : `${durationMin}m`;
 
   return (
     <div
-      className="flex items-center justify-between py-3 border-b border-zinc-800/20 last:border-0 group transition-colors hover:bg-zinc-800/20 -mx-2 px-2 rounded-lg animate-fade-in"
+      className="border-b border-zinc-800/20 last:border-0 animate-fade-in"
       style={{ animationDelay: `${index * 30}ms` }}
     >
-      <div className="flex items-center gap-3">
-        <div
-          className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 transition-shadow ${
-            trade.direction === "LONG"
-              ? "bg-emerald-400/10 text-emerald-400 group-hover:shadow-[0_0_10px_-2px_rgba(52,211,153,0.2)]"
-              : "bg-red-400/10 text-red-400 group-hover:shadow-[0_0_10px_-2px_rgba(248,113,113,0.2)]"
-          }`}
-        >
-          {trade.direction === "LONG" ? "L" : "S"}
+      <div
+        onClick={onToggle}
+        className="flex items-center justify-between py-3 group transition-colors hover:bg-zinc-800/20 -mx-2 px-2 rounded-lg cursor-pointer"
+      >
+        <div className="flex items-center gap-3">
+          <div
+            className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 transition-shadow ${
+              dir === "LONG"
+                ? "bg-emerald-400/10 text-emerald-400 group-hover:shadow-[0_0_10px_-2px_rgba(52,211,153,0.2)]"
+                : "bg-red-400/10 text-red-400 group-hover:shadow-[0_0_10px_-2px_rgba(248,113,113,0.2)]"
+            }`}
+          >
+            {dir === "LONG" ? "L" : "S"}
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-medium tabular-nums text-zinc-200">
+              ${formatPrice(trade.entry_price)}
+            </p>
+            <p className="text-[11px] text-zinc-600">{exitTime}</p>
+          </div>
         </div>
-        <div className="min-w-0">
-          <p className="text-sm font-medium tabular-nums text-zinc-200">
-            ${formatPrice(trade.entry_price)}
-          </p>
-          <p className="text-[11px] text-zinc-600">{time}</p>
+        <div className="flex items-center gap-2">
+          <div className="text-right shrink-0">
+            <p
+              className={`text-sm font-bold tabular-nums ${isWin ? "text-emerald-400" : "text-red-400"}`}
+            >
+              {isWin ? "+" : ""}${trade.pnl.toFixed(2)}
+            </p>
+            <p className="text-[11px] text-zinc-600">
+              {trade.rr.toFixed(1)}R &middot; {trade.exit_reason}
+            </p>
+          </div>
+          <svg
+            className={`w-3.5 h-3.5 text-zinc-600 transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
+            fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
         </div>
       </div>
-      <div className="text-right shrink-0">
-        <p
-          className={`text-sm font-bold tabular-nums ${isWin ? "text-emerald-400" : "text-red-400"}`}
-        >
-          {isWin ? "+" : ""}${trade.pnl.toFixed(2)}
-        </p>
-        <p className="text-[11px] text-zinc-600">
-          {trade.rr.toFixed(1)}R &middot; {trade.exit_reason}
-        </p>
-      </div>
+      {expanded && (
+        <div className="px-2 pb-3 -mx-2">
+          <div className="bg-zinc-900/60 rounded-lg p-3 grid grid-cols-2 gap-x-4 gap-y-2 text-[11px] font-mono">
+            <div>
+              <span className="text-zinc-600">Entry</span>
+              <p className="text-zinc-300 tabular-nums">${formatPrice(trade.entry_price)}</p>
+              <p className="text-zinc-600">{entryTime}</p>
+            </div>
+            <div>
+              <span className="text-zinc-600">Exit</span>
+              <p className="text-zinc-300 tabular-nums">${formatPrice(trade.exit_price)}</p>
+              <p className="text-zinc-600">{exitTime}</p>
+            </div>
+            <div>
+              <span className="text-zinc-600">SL</span>
+              <p className="text-zinc-300 tabular-nums">${formatPrice(trade.sl_price || trade.original_sl || 0)} ({slPct.toFixed(2)}%)</p>
+            </div>
+            <div>
+              <span className="text-zinc-600">Duration</span>
+              <p className="text-zinc-300">{durationStr}</p>
+            </div>
+            <div>
+              <span className="text-zinc-600">Size</span>
+              <p className="text-zinc-300 tabular-nums">{trade.position_size?.toFixed(2)} units</p>
+            </div>
+            <div>
+              <span className="text-zinc-600">Notional</span>
+              <p className="text-zinc-300 tabular-nums">${notional.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+            </div>
+            <div>
+              <span className="text-zinc-600">Model</span>
+              <p className="text-zinc-300">{trade.model}</p>
+            </div>
+            <div>
+              <span className="text-zinc-600">Confidence</span>
+              <p className="text-zinc-300">{((trade.confidence || 1) * 100).toFixed(0)}%</p>
+            </div>
+            <div>
+              <span className="text-zinc-600">Equity After</span>
+              <p className={`tabular-nums ${isWin ? "text-emerald-400/80" : "text-red-400/80"}`}>
+                ${trade.equity_after?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </p>
+            </div>
+            <div>
+              <span className="text-zinc-600">Partial Close</span>
+              <p className="text-zinc-300">{trade.partial_closed ? "Yes" : "No"}</p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -500,6 +587,7 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [eventPage, setEventPage] = useState(0);
+  const [expandedTrade, setExpandedTrade] = useState<number | null>(null);
 
   async function fetchData(sym: SymbolId) {
     try {
@@ -517,6 +605,7 @@ export default function Dashboard() {
   useEffect(() => {
     setData(null);
     setEventPage(0);
+    setExpandedTrade(null);
     fetchData(activeSymbol);
     const interval = setInterval(() => fetchData(activeSymbol), REFRESH_INTERVAL);
     return () => clearInterval(interval);
@@ -794,7 +883,15 @@ export default function Dashboard() {
                 <div className="overflow-y-auto flex-1 pr-1">
                   {[...trades]
                     .reverse()
-                    .map((trade, i) => <TradeRow key={i} trade={trade} index={i} />)}
+                    .map((trade, i) => (
+                      <TradeRow
+                        key={i}
+                        trade={trade}
+                        index={i}
+                        expanded={expandedTrade === i}
+                        onToggle={() => setExpandedTrade(expandedTrade === i ? null : i)}
+                      />
+                    ))}
                 </div>
               )}
             </div>
