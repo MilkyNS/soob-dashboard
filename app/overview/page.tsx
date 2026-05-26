@@ -317,6 +317,7 @@ export default function Overview() {
               </h1>
               <div className="h-5 w-px bg-zinc-800/60" />
               <a href="/" className="text-xs text-zinc-600 hover:text-zinc-300 transition-colors">Single View</a>
+              <a href="/checker" className="text-xs text-zinc-600 hover:text-zinc-300 transition-colors">Checker</a>
             </div>
             <div className="flex items-center gap-3 text-xs text-zinc-600">
               {lastUpdate && (
