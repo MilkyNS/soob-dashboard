@@ -583,15 +583,16 @@ const EVENTS_PER_PAGE = 10;
 
 export default function Dashboard() {
   const [activeSymbol, setActiveSymbol] = useState<SymbolId>("BTCUSDT");
+  const [engine, setEngine] = useState<"v4" | "v5">("v4");
   const [data, setData] = useState<BotStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [eventPage, setEventPage] = useState(0);
   const [expandedTrade, setExpandedTrade] = useState<number | null>(null);
 
-  async function fetchData(sym: SymbolId) {
+  async function fetchData(sym: SymbolId, eng: "v4" | "v5") {
     try {
-      const res = await fetch(`/api/status?symbol=${sym}`, { cache: "no-store" });
+      const res = await fetch(`/api/status?symbol=${sym}${eng === "v5" ? "&prefix=V5" : ""}`, { cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
       setData(json);
@@ -606,10 +607,10 @@ export default function Dashboard() {
     setData(null);
     setEventPage(0);
     setExpandedTrade(null);
-    fetchData(activeSymbol);
-    const interval = setInterval(() => fetchData(activeSymbol), REFRESH_INTERVAL);
+    fetchData(activeSymbol, engine);
+    const interval = setInterval(() => fetchData(activeSymbol, engine), REFRESH_INTERVAL);
     return () => clearInterval(interval);
-  }, [activeSymbol]);
+  }, [activeSymbol, engine]);
 
   if (error && !data) {
     return (
@@ -623,7 +624,7 @@ export default function Dashboard() {
           <p className="text-red-400 font-bold">Connection Error</p>
           <p className="text-sm text-zinc-500 mt-2">{error}</p>
           <button
-            onClick={() => fetchData(activeSymbol)}
+            onClick={() => fetchData(activeSymbol, engine)}
             className="mt-4 px-5 py-2 bg-zinc-800/80 border border-zinc-700/50 rounded-lg text-sm hover:bg-zinc-700/80 transition-all hover:border-zinc-600/50"
           >
             Retry
@@ -680,6 +681,27 @@ export default function Dashboard() {
                   </button>
                 ))}
               </div>
+              <div className="h-5 w-px bg-zinc-800/60" />
+              <div className="flex items-center gap-1.5" title="Engine: v4 (live, structural) vs v5 (adaptive + trailing, 3% risk)">
+                <span className="text-[9px] uppercase tracking-wider text-zinc-600 font-semibold hidden lg:inline">Engine</span>
+                <div className="flex items-center gap-0.5 bg-zinc-900/50 rounded-lg p-0.5 ring-1 ring-zinc-800/60">
+                  {(["v4", "v5"] as const).map((e) => (
+                    <button
+                      key={e}
+                      onClick={() => setEngine(e)}
+                      className={`px-2.5 py-1 text-xs font-mono font-bold rounded-md transition-all duration-200 ${
+                        engine === e
+                          ? e === "v5"
+                            ? "bg-violet-500/15 text-violet-300 shadow-[0_0_10px_-3px_rgba(139,92,246,0.3)]"
+                            : "bg-emerald-500/15 text-emerald-300 shadow-[0_0_10px_-3px_rgba(16,185,129,0.3)]"
+                          : "text-zinc-600 hover:text-zinc-300 hover:bg-zinc-800/50"
+                      }`}
+                    >
+                      {e}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
 
             <div className="flex items-center gap-3">
@@ -697,7 +719,7 @@ export default function Dashboard() {
                 <span className="text-xs font-medium">Overview</span>
               </a>
               <a
-                href={`/chart?symbol=${activeSymbol}`}
+                href={`/chart?symbol=${activeSymbol}&engine=${engine}`}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800/40 border border-zinc-700/30 hover:bg-violet-500/10 hover:border-violet-500/20 transition-all duration-200 text-zinc-400 hover:text-violet-300"
               >
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>

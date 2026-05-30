@@ -334,6 +334,7 @@ function ChartPage() {
     return s;
   }, [symbol]);
 
+  const [engine, setEngine] = useState<"v4" | "v5">(searchParams.get("engine") === "v5" ? "v5" : "v4");
   const [data, setData] = useState<StructuresResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tf, setTf] = useState<Timeframe>("1H");
@@ -356,7 +357,7 @@ function ChartPage() {
 
   const fetchData = useCallback(async () => {
     try {
-      const res = await fetch(`/api/structures?symbol=${symbol}`, { cache: "no-store" });
+      const res = await fetch(`/api/structures?symbol=${symbol}${engine === "v5" ? "&prefix=V5" : ""}`, { cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
       setData(json);
@@ -365,7 +366,7 @@ function ChartPage() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to fetch");
     }
-  }, [symbol]);
+  }, [symbol, engine]);
 
   useEffect(() => {
     fetchData();
@@ -683,6 +684,27 @@ function ChartPage() {
           <div className="h-4 w-px bg-zinc-800/60" />
 
           <span className="text-xs font-mono font-bold text-zinc-300">{symbolLabel}</span>
+
+          <div className="h-4 w-px bg-zinc-800/60" />
+
+          {/* Engine toggle */}
+          <div className="flex items-center gap-0.5 bg-zinc-900/50 rounded-lg p-0.5 ring-1 ring-zinc-800/60" title="Engine: v4 (structural) vs v5 (adaptive + trailing)">
+            {(["v4", "v5"] as const).map((e) => (
+              <button
+                key={e}
+                onClick={() => setEngine(e)}
+                className={`px-2 py-1 text-xs font-mono font-bold rounded-md transition-all duration-200 ${
+                  engine === e
+                    ? e === "v5"
+                      ? "bg-violet-500/15 text-violet-300 shadow-[0_0_10px_-3px_rgba(139,92,246,0.3)]"
+                      : "bg-emerald-500/15 text-emerald-300 shadow-[0_0_10px_-3px_rgba(16,185,129,0.3)]"
+                    : "text-zinc-600 hover:text-zinc-300 hover:bg-zinc-800/50"
+                }`}
+              >
+                {e}
+              </button>
+            ))}
+          </div>
 
           <div className="h-4 w-px bg-zinc-800/60" />
 

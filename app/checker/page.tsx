@@ -41,7 +41,7 @@ interface ReconData {
   status: string;
   latest: {
     single?: ReconRun;
-    multi?: ReconRun;
+    v5?: ReconRun;
   };
   error?: string;
 }
@@ -348,7 +348,7 @@ export default function Checker() {
   }
 
   const singleRun = data.latest?.single;
-  const multiRun = data.latest?.multi;
+  const v5Run = data.latest?.v5;
 
   return (
     <main className="min-h-screen flex flex-col">
@@ -395,8 +395,8 @@ export default function Checker() {
           </div>
         </div>
 
-        {/* Single Bot Section */}
-        <StatusHero run={singleRun} label="Single-Symbol Bots" />
+        {/* v4 Bot Section */}
+        <StatusHero run={singleRun} label="v4 Bots — Structural" />
         {singleRun && singleRun.results.length > 0 && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
             {singleRun.results.map((r, i) => (
@@ -410,17 +410,17 @@ export default function Checker() {
           <div className="flex items-center gap-3">
             <div className="h-px flex-1 bg-gradient-to-r from-transparent via-violet-500/20 to-transparent" />
             <span className="text-sm font-bold text-violet-400 tracking-wider uppercase" style={{ textShadow: "0 0 20px rgba(139, 92, 246, 0.3)" }}>
-              Multi-Symbol Bot
+              v5 Bots — Adaptive + Trailing
             </span>
             <div className="h-px flex-1 bg-gradient-to-r from-transparent via-violet-500/20 to-transparent" />
           </div>
         </div>
 
-        {/* Multi Bot Section */}
-        <StatusHero run={multiRun} label="Multi-Symbol Bot" />
-        {multiRun && multiRun.results.length > 0 && (
+        {/* v5 Bot Section */}
+        <StatusHero run={v5Run} label="v5 Bots — Adaptive + Trailing" />
+        {v5Run && v5Run.results.length > 0 && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-            {multiRun.results.map((r, i) => (
+            {v5Run.results.map((r, i) => (
               <SymbolCard key={r.symbol} result={r} delay={i * 80} />
             ))}
           </div>

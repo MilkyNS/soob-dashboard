@@ -258,10 +258,11 @@ export default function Overview() {
     }
     setAllData(updatedSingle);
 
-    // Fetch multi-bot (prefix=MULTI)
+    // Fetch v5 bots (prefix=V5) — adaptive TPs + trailing engine, 3 separate $1k silos.
+    // (var names below kept as `multi*` to hold the second bot group; they now carry v5 data.)
     const multi = await Promise.allSettled(
       SYMBOLS.map(async (sym) => {
-        const res = await fetch(`/api/status?symbol=${sym}&prefix=MULTI`, { cache: "no-store" });
+        const res = await fetch(`/api/status?symbol=${sym}&prefix=V5`, { cache: "no-store" });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return { sym, data: await res.json() as BotStatus };
       })
@@ -292,10 +293,10 @@ export default function Overview() {
   const totalReturn = totalStarting > 0 ? ((totalEquity - totalStarting) / totalStarting * 100) : 0;
   const activePositions = loaded.filter((s) => allData[s]?.state.live?.has_position).length;
 
-  // Multi-bot aggregate stats
+  // v5-bot aggregate stats (separate $1k silos — SUM equity like the v4 section, not max)
   const multiLoaded = SYMBOLS.filter((s) => multiData[s] !== null);
-  const multiEquity = multiLoaded.length > 0 ? Math.max(...multiLoaded.map((s) => multiData[s]?.state.equity || 0)) : 0;
-  const multiStarting = 1000;
+  const multiEquity = multiLoaded.reduce((sum, s) => sum + (multiData[s]?.state.equity || 0), 0);
+  const multiStarting = multiLoaded.reduce((sum, s) => sum + (multiData[s]?.state.starting_capital || 1000), 0) || 3000;
   const multiPnl = multiLoaded.reduce((sum, s) => sum + (multiData[s]?.stats.total_pnl || 0), 0);
   const multiTrades = multiLoaded.reduce((sum, s) => sum + (multiData[s]?.stats.total_trades || 0), 0);
   const multiWins = multiLoaded.reduce((sum, s) => sum + (multiData[s]?.stats.wins || 0), 0);
@@ -382,7 +383,18 @@ export default function Overview() {
           </div>
         </div>
 
-        {/* Symbol cards */}
+        {/* ═══ v4 Bot Section (live, structural) ═══ */}
+        <div className="mt-2 mb-4">
+          <div className="flex items-center gap-3">
+            <div className="h-px flex-1 bg-gradient-to-r from-transparent via-zinc-600/30 to-transparent" />
+            <h2 className="text-sm font-bold text-zinc-300 tracking-wider uppercase">
+              v4 Bots — Structural
+            </h2>
+            <div className="h-px flex-1 bg-gradient-to-r from-transparent via-zinc-600/30 to-transparent" />
+          </div>
+        </div>
+
+        {/* v4 symbol cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {SYMBOLS.map((sym, i) => (
             <SymbolCard key={sym} symbol={sym} data={allData[sym]} />
@@ -449,24 +461,24 @@ export default function Overview() {
           );
         })()}
 
-        {/* ═══ Multi-Bot Section ═══ */}
+        {/* ═══ v5 Bot Section ═══ */}
         <div className="mt-10 mb-2">
           <div className="flex items-center gap-3 mb-4">
             <div className="h-px flex-1 bg-gradient-to-r from-transparent via-violet-500/20 to-transparent" />
             <h2 className="text-sm font-bold text-violet-400 tracking-wider uppercase" style={{ textShadow: "0 0 20px rgba(139, 92, 246, 0.3)" }}>
-              Multi-Symbol Bot
+              v5 Bots — Adaptive + Trailing
             </h2>
             <div className="h-px flex-1 bg-gradient-to-r from-transparent via-violet-500/20 to-transparent" />
           </div>
           <p className="text-[11px] text-zinc-600 text-center mb-4">
-            Shared $1,000 capital — scans BTC, ETH, SOL simultaneously
+            3 separate $1,000 silos · adaptive TPs · trailing-after-partial · 3% risk
           </p>
         </div>
 
-        {/* Multi-bot portfolio summary */}
+        {/* v5-bot portfolio summary */}
         <div className="card-static p-5 mb-6 animate-fade-in border-violet-500/10">
           <div className="flex items-center justify-between mb-4">
-            <p className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium">Shared Account</p>
+            <p className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium">v5 Portfolio (3 × $1k)</p>
             {multiActivePositions > 0 && (
               <span className="px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-300 border border-violet-500/20 text-[10px] font-bold">
                 {multiActivePositions} ACTIVE
@@ -475,7 +487,7 @@ export default function Overview() {
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-6">
             <div>
-              <p className="text-[10px] text-zinc-600 uppercase tracking-wider">Shared Equity</p>
+              <p className="text-[10px] text-zinc-600 uppercase tracking-wider">Total Equity</p>
               <p className={`text-xl font-bold font-mono tabular-nums mt-1 ${multiEquity >= multiStarting ? "text-emerald-400" : "text-red-400"}`}>
                 ${multiEquity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </p>
@@ -524,7 +536,7 @@ export default function Overview() {
       {/* Footer */}
       <footer className="border-t border-zinc-800/40 py-3 mt-auto">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center justify-between text-[10px] text-zinc-700">
-          <span>SOOB Multi-Symbol Paper Trading</span>
+          <span>SOOB Paper Trading — v4 + v5</span>
           <span className="font-mono tabular-nums">Refresh: {REFRESH_INTERVAL / 1000}s</span>
         </div>
       </footer>
