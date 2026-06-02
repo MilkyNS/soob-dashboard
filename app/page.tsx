@@ -582,9 +582,9 @@ function EquityChart({
 const EVENTS_PER_PAGE = 10;
 
 const ENGINE_META = {
-  v4: { label: "v4", desc: "Structural", text: "text-emerald-300", ring: "ring-emerald-500/30", bg: "bg-emerald-500/15", glow: "rgba(16,185,129,0.3)" },
-  v5: { label: "v5", desc: "Adaptive + Trailing", text: "text-violet-300", ring: "ring-violet-500/30", bg: "bg-violet-500/15", glow: "rgba(139,92,246,0.3)" },
-  v6: { label: "v6.1", desc: "FRESH-gated let-run · weekends", text: "text-amber-300", ring: "ring-amber-500/30", bg: "bg-amber-500/15", glow: "rgba(245,158,11,0.3)" },
+  v4: { label: "v4", desc: "Tight targets, high win-rate", text: "text-emerald-300", ring: "ring-emerald-500/30", bg: "bg-emerald-500/15", glow: "rgba(16,185,129,0.3)" },
+  v5: { label: "v5", desc: "Aggressive, runs everything", text: "text-violet-300", ring: "ring-violet-500/30", bg: "bg-violet-500/15", glow: "rgba(139,92,246,0.3)" },
+  v6: { label: "v6.1", desc: "Lets winners run, trades weekends", text: "text-amber-300", ring: "ring-amber-500/30", bg: "bg-amber-500/15", glow: "rgba(245,158,11,0.3)" },
 } as const;
 
 export default function Dashboard() {
@@ -752,8 +752,11 @@ export default function Dashboard() {
               </p>
               <p className={`text-[11px] font-mono ${returnPct >= 0 ? "text-emerald-500/60" : "text-red-500/60"}`}>{returnPct >= 0 ? "+" : ""}{returnPct.toFixed(1)}%</p>
             </div>
-            <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold border ${activeCount > 0 ? `${em.bg} ${em.text} border-transparent` : "text-zinc-600 border-zinc-800/60"}`}>
-              {activeCount}/{loaded.length} ACTIVE
+            <span
+              title="How many of the 3 symbols currently have an open position"
+              className={`px-2.5 py-1 rounded-full text-[11px] font-bold border whitespace-nowrap ${activeCount > 0 ? `${em.bg} ${em.text} border-transparent` : "text-zinc-500 border-zinc-800/60"}`}
+            >
+              {activeCount > 0 ? `${activeCount}/${loaded.length} in trade` : "Flat — scanning"}
             </span>
           </div>
         </div>
