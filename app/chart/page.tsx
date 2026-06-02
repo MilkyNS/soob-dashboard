@@ -325,7 +325,7 @@ export default function ChartPageWrapper() {
 
 function ChartPage() {
   const searchParams = useSearchParams();
-  const symbol = searchParams.get("symbol") || "BTCUSDT";
+  const [symbol, setSymbol] = useState(searchParams.get("symbol") || "BTCUSDT");
   const symbolLabel = useMemo(() => {
     const s = symbol.toUpperCase();
     for (const q of ["USDT", "USDC", "BUSD", "USD"]) {
@@ -685,7 +685,22 @@ function ChartPage() {
 
           <div className="h-4 w-px bg-zinc-800/60" />
 
-          <span className="text-xs font-mono font-bold text-zinc-300">{symbolLabel}</span>
+          {/* Symbol selector (the chart is one symbol at a time) */}
+          <div className="flex items-center gap-0.5 bg-zinc-900/50 rounded-lg p-0.5 ring-1 ring-zinc-800/60" title="Symbol">
+            {(["BTCUSDT", "ETHUSDT", "SOLUSDT"] as const).map((sid) => (
+              <button
+                key={sid}
+                onClick={() => setSymbol(sid)}
+                className={`px-2.5 py-1 text-xs font-mono font-bold rounded-md transition-all duration-200 ${
+                  symbol === sid
+                    ? "bg-violet-500/15 text-violet-300 shadow-[0_0_10px_-3px_rgba(139,92,246,0.3)]"
+                    : "text-zinc-600 hover:text-zinc-300 hover:bg-zinc-800/50"
+                }`}
+              >
+                {sid.replace("USDT", "")}
+              </button>
+            ))}
+          </div>
 
           <div className="h-4 w-px bg-zinc-800/60" />
 

@@ -734,19 +734,20 @@ export default function Dashboard() {
             <span className={`px-3 py-1.5 rounded-md text-base font-mono font-bold ${em.bg} ${em.text}`}>{em.label}</span>
             <p className="text-[11px] text-zinc-600">BTC · ETH · SOL — shared ${startingCapital.toLocaleString()} @ 3%</p>
           </div>
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-8 sm:gap-10">
             <div className="text-right">
-              <p className="text-[10px] text-zinc-600 uppercase tracking-wider">Pool Equity</p>
-              <p className={`text-2xl font-bold font-mono tabular-nums ${equity >= startingCapital ? "text-emerald-400" : "text-red-400"}`}>
+              <p className="text-[10px] text-zinc-600 uppercase tracking-wider mb-1">Pool Equity</p>
+              <p className={`text-2xl font-bold font-mono tabular-nums leading-none ${equity >= startingCapital ? "text-emerald-400" : "text-red-400"}`}>
                 ${equity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </p>
+              <p className="text-[11px] text-zinc-600 font-mono mt-1.5">of ${startingCapital.toLocaleString()} start</p>
             </div>
             <div className="text-right">
-              <p className="text-[10px] text-zinc-600 uppercase tracking-wider">Total P&L</p>
-              <p className={`text-lg font-bold font-mono tabular-nums ${poolPnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+              <p className="text-[10px] text-zinc-600 uppercase tracking-wider mb-1">Total P&L</p>
+              <p className={`text-2xl font-bold font-mono tabular-nums leading-none ${poolPnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                 {poolPnl >= 0 ? "+" : ""}${poolPnl.toLocaleString(undefined, { minimumFractionDigits: 2 })}
               </p>
-              <p className={`text-[11px] font-mono ${returnPct >= 0 ? "text-emerald-500/60" : "text-red-500/60"}`}>{returnPct >= 0 ? "+" : ""}{returnPct.toFixed(1)}%</p>
+              <p className={`text-[11px] font-mono mt-1.5 ${returnPct >= 0 ? "text-emerald-500/60" : "text-red-500/60"}`}>{returnPct >= 0 ? "+" : ""}{returnPct.toFixed(1)}% return</p>
             </div>
             <span
               title="How many of the 3 symbols currently have an open position"
