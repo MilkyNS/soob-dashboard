@@ -712,7 +712,6 @@ export default function Dashboard() {
                   </button>
                 ))}
               </div>
-              <span className="text-[11px] text-zinc-600 font-medium hidden md:inline truncate">{em.desc} · shared ${startingCapital.toLocaleString()} @3%</span>
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
@@ -732,11 +731,8 @@ export default function Dashboard() {
         {/* Pool banner — engine's shared $2k account */}
         <div className={`card-static p-5 flex flex-wrap items-center justify-between gap-4 ring-1 ${em.ring}`}>
           <div className="flex items-center gap-3 min-w-0">
-            <span className={`px-2.5 py-1 rounded-md text-sm font-mono font-bold ${em.bg} ${em.text}`}>{em.label}</span>
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-zinc-200 truncate">{em.desc}</p>
-              <p className="text-[11px] text-zinc-600">BTC · ETH · SOL — shared ${startingCapital.toLocaleString()} pool @ 3%</p>
-            </div>
+            <span className={`px-3 py-1.5 rounded-md text-base font-mono font-bold ${em.bg} ${em.text}`}>{em.label}</span>
+            <p className="text-[11px] text-zinc-600">BTC · ETH · SOL — shared ${startingCapital.toLocaleString()} @ 3%</p>
           </div>
           <div className="flex items-center gap-6">
             <div className="text-right">
