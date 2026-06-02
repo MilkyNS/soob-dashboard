@@ -583,16 +583,17 @@ const EVENTS_PER_PAGE = 10;
 
 export default function Dashboard() {
   const [activeSymbol, setActiveSymbol] = useState<SymbolId>("BTCUSDT");
-  const [engine, setEngine] = useState<"v4" | "v5">("v4");
+  const [engine, setEngine] = useState<"v4" | "v5" | "v6">("v6");
   const [data, setData] = useState<BotStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [eventPage, setEventPage] = useState(0);
   const [expandedTrade, setExpandedTrade] = useState<number | null>(null);
 
-  async function fetchData(sym: SymbolId, eng: "v4" | "v5") {
+  async function fetchData(sym: SymbolId, eng: "v4" | "v5" | "v6") {
     try {
-      const res = await fetch(`/api/status?symbol=${sym}${eng === "v5" ? "&prefix=V5" : ""}`, { cache: "no-store" });
+      // Multibots write MULTI_V4/V5/V6_{SYMBOL}_paper_* (shared $2k pool per engine).
+      const res = await fetch(`/api/status?symbol=${sym}&prefix=MULTI_${eng.toUpperCase()}`, { cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
       setData(json);
@@ -682,16 +683,18 @@ export default function Dashboard() {
                 ))}
               </div>
               <div className="h-5 w-px bg-zinc-800/60" />
-              <div className="flex items-center gap-1.5" title="Engine: v4 (live, structural) vs v5 (adaptive + trailing, 3% risk)">
+              <div className="flex items-center gap-1.5" title="Engine: v4 (structural) · v5 (adaptive+trailing) · v6.1 (FRESH-gated let-run, weekends) — all shared $2k @3%">
                 <span className="text-[9px] uppercase tracking-wider text-zinc-600 font-semibold hidden lg:inline">Engine</span>
                 <div className="flex items-center gap-0.5 bg-zinc-900/50 rounded-lg p-0.5 ring-1 ring-zinc-800/60">
-                  {(["v4", "v5"] as const).map((e) => (
+                  {(["v4", "v5", "v6"] as const).map((e) => (
                     <button
                       key={e}
                       onClick={() => setEngine(e)}
                       className={`px-2.5 py-1 text-xs font-mono font-bold rounded-md transition-all duration-200 ${
                         engine === e
-                          ? e === "v5"
+                          ? e === "v6"
+                            ? "bg-amber-500/15 text-amber-300 shadow-[0_0_10px_-3px_rgba(245,158,11,0.3)]"
+                            : e === "v5"
                             ? "bg-violet-500/15 text-violet-300 shadow-[0_0_10px_-3px_rgba(139,92,246,0.3)]"
                             : "bg-emerald-500/15 text-emerald-300 shadow-[0_0_10px_-3px_rgba(16,185,129,0.3)]"
                           : "text-zinc-600 hover:text-zinc-300 hover:bg-zinc-800/50"

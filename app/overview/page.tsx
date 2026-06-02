@@ -241,38 +241,31 @@ export default function Overview() {
     ETHUSDT: null,
     SOLUSDT: null,
   });
+  const [v6Data, setV6Data] = useState<Record<SymbolId, BotStatus | null>>({
+    BTCUSDT: null,
+    ETHUSDT: null,
+    SOLUSDT: null,
+  });
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
 
+  async function fetchGroup(prefix: string) {
+    const res = await Promise.allSettled(
+      SYMBOLS.map(async (sym) => {
+        const r = await fetch(`/api/status?symbol=${sym}&prefix=${prefix}`, { cache: "no-store" });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return { sym, data: await r.json() as BotStatus };
+      })
+    );
+    const out: Record<SymbolId, BotStatus | null> = { BTCUSDT: null, ETHUSDT: null, SOLUSDT: null };
+    for (const x of res) if (x.status === "fulfilled") out[x.value.sym] = x.value.data;
+    return out;
+  }
+
   async function fetchAll() {
-    // Fetch individual bots
-    const single = await Promise.allSettled(
-      SYMBOLS.map(async (sym) => {
-        const res = await fetch(`/api/status?symbol=${sym}`, { cache: "no-store" });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return { sym, data: await res.json() as BotStatus };
-      })
-    );
-    const updatedSingle = { ...allData };
-    for (const r of single) {
-      if (r.status === "fulfilled") updatedSingle[r.value.sym] = r.value.data;
-    }
-    setAllData(updatedSingle);
-
-    // Fetch v5 bots (prefix=V5) — adaptive TPs + trailing engine, 3 separate $1k silos.
-    // (var names below kept as `multi*` to hold the second bot group; they now carry v5 data.)
-    const multi = await Promise.allSettled(
-      SYMBOLS.map(async (sym) => {
-        const res = await fetch(`/api/status?symbol=${sym}&prefix=V5`, { cache: "no-store" });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return { sym, data: await res.json() as BotStatus };
-      })
-    );
-    const updatedMulti = { ...multiData };
-    for (const r of multi) {
-      if (r.status === "fulfilled") updatedMulti[r.value.sym] = r.value.data;
-    }
-    setMultiData(updatedMulti);
-
+    // 3 multibots, each a shared $2k pool across BTC+ETH+SOL.
+    setAllData(await fetchGroup("MULTI_V4"));
+    setMultiData(await fetchGroup("MULTI_V5"));
+    setV6Data(await fetchGroup("MULTI_V6"));
     setLastUpdate(new Date());
   }
 
@@ -282,28 +275,33 @@ export default function Overview() {
     return () => clearInterval(interval);
   }, []);
 
-  const loaded = SYMBOLS.filter((s) => allData[s] !== null);
-  const totalEquity = loaded.reduce((sum, s) => sum + (allData[s]?.state.equity || 0), 0);
-  const totalStarting = loaded.reduce((sum, s) => sum + (allData[s]?.state.starting_capital || 1000), 0);
-  const totalPnl = loaded.reduce((sum, s) => sum + (allData[s]?.stats.total_pnl || 0), 0);
-  const totalTrades = loaded.reduce((sum, s) => sum + (allData[s]?.stats.total_trades || 0), 0);
-  const totalWins = loaded.reduce((sum, s) => sum + (allData[s]?.stats.wins || 0), 0);
-  const totalLosses = loaded.reduce((sum, s) => sum + (allData[s]?.stats.losses || 0), 0);
-  const totalWR = totalTrades > 0 ? (totalWins / totalTrades * 100) : 0;
-  const totalReturn = totalStarting > 0 ? ((totalEquity - totalStarting) / totalStarting * 100) : 0;
-  const activePositions = loaded.filter((s) => allData[s]?.state.live?.has_position).length;
-
-  // v5-bot aggregate stats (separate $1k silos — SUM equity like the v4 section, not max)
-  const multiLoaded = SYMBOLS.filter((s) => multiData[s] !== null);
-  const multiEquity = multiLoaded.reduce((sum, s) => sum + (multiData[s]?.state.equity || 0), 0);
-  const multiStarting = multiLoaded.reduce((sum, s) => sum + (multiData[s]?.state.starting_capital || 1000), 0) || 3000;
-  const multiPnl = multiLoaded.reduce((sum, s) => sum + (multiData[s]?.stats.total_pnl || 0), 0);
-  const multiTrades = multiLoaded.reduce((sum, s) => sum + (multiData[s]?.stats.total_trades || 0), 0);
-  const multiWins = multiLoaded.reduce((sum, s) => sum + (multiData[s]?.stats.wins || 0), 0);
-  const multiLosses = multiLoaded.reduce((sum, s) => sum + (multiData[s]?.stats.losses || 0), 0);
-  const multiWR = multiTrades > 0 ? (multiWins / multiTrades * 100) : 0;
-  const multiReturn = multiStarting > 0 ? ((multiEquity - multiStarting) / multiStarting * 100) : 0;
-  const multiActivePositions = multiLoaded.filter((s) => multiData[s]?.state.live?.has_position).length;
+  // Shared-equity pool: all symbols of a multibot report the SAME pool equity, so equity is
+  // the representative value (max), NOT a sum of silos. PnL/trades sum across symbols.
+  function agg(data: Record<SymbolId, BotStatus | null>) {
+    const ld = SYMBOLS.filter((s) => data[s] !== null);
+    const equity = Math.max(0, ...ld.map((s) => data[s]?.state.equity || 0));
+    const starting = Math.max(2000, ...ld.map((s) => data[s]?.state.starting_capital || 0));
+    const pnl = ld.reduce((a, s) => a + (data[s]?.stats.total_pnl || 0), 0);
+    const trades = ld.reduce((a, s) => a + (data[s]?.stats.total_trades || 0), 0);
+    const wins = ld.reduce((a, s) => a + (data[s]?.stats.wins || 0), 0);
+    const losses = ld.reduce((a, s) => a + (data[s]?.stats.losses || 0), 0);
+    return {
+      equity, starting, pnl, trades, wins, losses,
+      wr: trades > 0 ? (wins / trades * 100) : 0,
+      ret: starting > 0 ? ((equity - starting) / starting * 100) : 0,
+      active: ld.filter((s) => data[s]?.state.live?.has_position).length,
+    };
+  }
+  const v4 = agg(allData);
+  const v5 = agg(multiData);
+  const v6 = agg(v6Data);
+  // Back-compat aliases for the existing v4-section markup below.
+  const totalEquity = v4.equity, totalStarting = v4.starting, totalPnl = v4.pnl,
+        totalTrades = v4.trades, totalWins = v4.wins, totalLosses = v4.losses,
+        totalWR = v4.wr, totalReturn = v4.ret, activePositions = v4.active;
+  const multiEquity = v5.equity, multiStarting = v5.starting, multiPnl = v5.pnl,
+        multiTrades = v5.trades, multiWins = v5.wins, multiLosses = v5.losses,
+        multiWR = v5.wr, multiReturn = v5.ret, multiActivePositions = v5.active;
 
   return (
     <main className="min-h-screen flex flex-col">
@@ -340,7 +338,7 @@ export default function Overview() {
         {/* Portfolio summary */}
         <div className="card-static p-5 mb-6 animate-fade-in">
           <div className="flex items-center justify-between mb-4">
-            <p className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium">Portfolio Total</p>
+            <p className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium">v4 — Structural · shared $2k @3%</p>
             <span className="text-[10px] text-zinc-600 font-mono">{SYMBOLS.length} symbols</span>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-6">
@@ -471,14 +469,14 @@ export default function Overview() {
             <div className="h-px flex-1 bg-gradient-to-r from-transparent via-violet-500/20 to-transparent" />
           </div>
           <p className="text-[11px] text-zinc-600 text-center mb-4">
-            3 separate $1,000 silos · adaptive TPs · trailing-after-partial · 3% risk
+            shared $2,000 pool · adaptive TPs · trailing-after-partial · 3% risk
           </p>
         </div>
 
         {/* v5-bot portfolio summary */}
         <div className="card-static p-5 mb-6 animate-fade-in border-violet-500/10">
           <div className="flex items-center justify-between mb-4">
-            <p className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium">v5 Portfolio (3 × $1k)</p>
+            <p className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium">v5 — shared $2k pool</p>
             {multiActivePositions > 0 && (
               <span className="px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-300 border border-violet-500/20 text-[10px] font-bold">
                 {multiActivePositions} ACTIVE
@@ -531,12 +529,75 @@ export default function Overview() {
             <SymbolCard key={`multi-${sym}`} symbol={sym} data={multiData[sym]} />
           ))}
         </div>
+
+        {/* ═══ v6.1 Bot Section ═══ */}
+        <div className="mt-10 mb-2">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="h-px flex-1 bg-gradient-to-r from-transparent via-amber-500/20 to-transparent" />
+            <h2 className="text-sm font-bold text-amber-400 tracking-wider uppercase" style={{ textShadow: "0 0 20px rgba(245, 158, 11, 0.3)" }}>
+              v6.1 Bots — FRESH-gated Let-run
+            </h2>
+            <div className="h-px flex-1 bg-gradient-to-r from-transparent via-amber-500/20 to-transparent" />
+          </div>
+          <p className="text-[11px] text-zinc-600 text-center mb-4">
+            shared $2,000 pool · FRESH→let-run · trailing runner · weekends ON · 3% risk
+          </p>
+        </div>
+
+        <div className="card-static p-5 mb-6 animate-fade-in border-amber-500/10">
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium">v6.1 — shared $2k pool</p>
+            {v6.active > 0 && (
+              <span className="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/20 text-[10px] font-bold">
+                {v6.active} ACTIVE
+              </span>
+            )}
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-6">
+            <div>
+              <p className="text-[10px] text-zinc-600 uppercase tracking-wider">Total Equity</p>
+              <p className={`text-xl font-bold font-mono tabular-nums mt-1 ${v6.equity >= v6.starting ? "text-emerald-400" : "text-red-400"}`}>
+                ${v6.equity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </p>
+              <p className="text-[11px] text-zinc-600 font-mono mt-0.5">of ${v6.starting.toLocaleString()} starting</p>
+            </div>
+            <div>
+              <p className="text-[10px] text-zinc-600 uppercase tracking-wider">Total P&L</p>
+              <p className={`text-xl font-bold font-mono tabular-nums mt-1 ${v6.pnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                {v6.pnl >= 0 ? "+" : ""}${v6.pnl.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+              </p>
+              <p className={`text-[11px] font-mono mt-0.5 ${v6.ret >= 0 ? "text-emerald-500/60" : "text-red-500/60"}`}>
+                {v6.ret >= 0 ? "+" : ""}{v6.ret.toFixed(1)}% return
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] text-zinc-600 uppercase tracking-wider">Win Rate</p>
+              <p className="text-xl font-bold font-mono tabular-nums mt-1 text-zinc-200">
+                {v6.trades > 0 ? `${v6.wr.toFixed(1)}%` : "—"}
+              </p>
+              <p className="text-[11px] text-zinc-600 font-mono mt-0.5">{v6.trades} trades ({v6.wins}W / {v6.losses}L)</p>
+            </div>
+            <div>
+              <p className="text-[10px] text-zinc-600 uppercase tracking-wider">Active Positions</p>
+              <p className={`text-xl font-bold font-mono tabular-nums mt-1 ${v6.active > 0 ? "text-amber-400" : "text-zinc-500"}`}>
+                {v6.active}
+              </p>
+              <p className="text-[11px] text-zinc-600 font-mono mt-0.5">of {SYMBOLS.length} symbols</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          {SYMBOLS.map((sym) => (
+            <SymbolCard key={`v6-${sym}`} symbol={sym} data={v6Data[sym]} />
+          ))}
+        </div>
       </div>
 
       {/* Footer */}
       <footer className="border-t border-zinc-800/40 py-3 mt-auto">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center justify-between text-[10px] text-zinc-700">
-          <span>SOOB Paper Trading — v4 + v5</span>
+          <span>SOOB Paper Trading — v4 + v5 + v6.1 multibots (shared $2k each)</span>
           <span className="font-mono tabular-nums">Refresh: {REFRESH_INTERVAL / 1000}s</span>
         </div>
       </footer>

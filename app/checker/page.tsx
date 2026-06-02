@@ -41,7 +41,9 @@ interface ReconData {
   status: string;
   latest: {
     single?: ReconRun;
+    v4?: ReconRun;
     v5?: ReconRun;
+    v6?: ReconRun;
   };
   error?: string;
 }
@@ -347,8 +349,9 @@ export default function Checker() {
     );
   }
 
-  const singleRun = data.latest?.single;
+  const singleRun = data.latest?.v4 ?? data.latest?.single;
   const v5Run = data.latest?.v5;
+  const v6Run = data.latest?.v6;
 
   return (
     <main className="min-h-screen flex flex-col">
@@ -421,6 +424,27 @@ export default function Checker() {
         {v5Run && v5Run.results.length > 0 && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
             {v5Run.results.map((r, i) => (
+              <SymbolCard key={r.symbol} result={r} delay={i * 80} />
+            ))}
+          </div>
+        )}
+
+        {/* Divider */}
+        <div className="mt-10 mb-6">
+          <div className="flex items-center gap-3">
+            <div className="h-px flex-1 bg-gradient-to-r from-transparent via-amber-500/20 to-transparent" />
+            <span className="text-sm font-bold text-amber-400 tracking-wider uppercase" style={{ textShadow: "0 0 20px rgba(245, 158, 11, 0.3)" }}>
+              v6.1 Bots — FRESH-gated Let-run
+            </span>
+            <div className="h-px flex-1 bg-gradient-to-r from-transparent via-amber-500/20 to-transparent" />
+          </div>
+        </div>
+
+        {/* v6 Bot Section */}
+        <StatusHero run={v6Run} label="v6.1 Bots — FRESH-gated Let-run" />
+        {v6Run && v6Run.results.length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+            {v6Run.results.map((r, i) => (
               <SymbolCard key={r.symbol} result={r} delay={i * 80} />
             ))}
           </div>
