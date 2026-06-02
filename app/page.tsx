@@ -581,39 +581,49 @@ function EquityChart({
 
 const EVENTS_PER_PAGE = 10;
 
+const ENGINE_META = {
+  v4: { label: "v4", desc: "Structural", text: "text-emerald-300", ring: "ring-emerald-500/30", bg: "bg-emerald-500/15", glow: "rgba(16,185,129,0.3)" },
+  v5: { label: "v5", desc: "Adaptive + Trailing", text: "text-violet-300", ring: "ring-violet-500/30", bg: "bg-violet-500/15", glow: "rgba(139,92,246,0.3)" },
+  v6: { label: "v6.1", desc: "FRESH-gated let-run · weekends", text: "text-amber-300", ring: "ring-amber-500/30", bg: "bg-amber-500/15", glow: "rgba(245,158,11,0.3)" },
+} as const;
+
 export default function Dashboard() {
-  const [activeSymbol, setActiveSymbol] = useState<SymbolId>("BTCUSDT");
   const [engine, setEngine] = useState<"v4" | "v5" | "v6">("v6");
-  const [data, setData] = useState<BotStatus | null>(null);
+  const [symData, setSymData] = useState<Record<SymbolId, BotStatus | null>>({ BTCUSDT: null, ETHUSDT: null, SOLUSDT: null });
   const [error, setError] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [eventPage, setEventPage] = useState(0);
   const [expandedTrade, setExpandedTrade] = useState<number | null>(null);
 
-  async function fetchData(sym: SymbolId, eng: "v4" | "v5" | "v6") {
-    try {
-      // Multibots write MULTI_V4/V5/V6_{SYMBOL}_paper_* (shared $2k pool per engine).
-      const res = await fetch(`/api/status?symbol=${sym}&prefix=MULTI_${eng.toUpperCase()}`, { cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
-      setData(json);
-      setError(null);
-      setLastUpdate(new Date());
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to fetch");
-    }
+  async function fetchData(eng: "v4" | "v5" | "v6") {
+    // One shared $2k pool per engine across all 3 symbols → fetch all, aggregate.
+    const results = await Promise.allSettled(
+      SYMBOLS.map(async (s) => {
+        const res = await fetch(`/api/status?symbol=${s.id}&prefix=MULTI_${eng.toUpperCase()}`, { cache: "no-store" });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return { id: s.id, data: (await res.json()) as BotStatus };
+      })
+    );
+    const next: Record<SymbolId, BotStatus | null> = { BTCUSDT: null, ETHUSDT: null, SOLUSDT: null };
+    let ok = false;
+    for (const r of results) if (r.status === "fulfilled") { next[r.value.id] = r.value.data; ok = true; }
+    setSymData(next);
+    setError(ok ? null : "Failed to fetch");
+    setLastUpdate(new Date());
   }
 
   useEffect(() => {
-    setData(null);
+    setSymData({ BTCUSDT: null, ETHUSDT: null, SOLUSDT: null });
     setEventPage(0);
     setExpandedTrade(null);
-    fetchData(activeSymbol, engine);
-    const interval = setInterval(() => fetchData(activeSymbol, engine), REFRESH_INTERVAL);
+    fetchData(engine);
+    const interval = setInterval(() => fetchData(engine), REFRESH_INTERVAL);
     return () => clearInterval(interval);
-  }, [activeSymbol, engine]);
+  }, [engine]);
 
-  if (error && !data) {
+  const loaded = SYMBOLS.filter((s) => symData[s.id] !== null);
+
+  if (error && loaded.length === 0) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
         <div className="card-static p-6 max-w-sm w-full text-center border-red-900/30">
@@ -625,7 +635,7 @@ export default function Dashboard() {
           <p className="text-red-400 font-bold">Connection Error</p>
           <p className="text-sm text-zinc-500 mt-2">{error}</p>
           <button
-            onClick={() => fetchData(activeSymbol, engine)}
+            onClick={() => fetchData(engine)}
             className="mt-4 px-5 py-2 bg-zinc-800/80 border border-zinc-700/50 rounded-lg text-sm hover:bg-zinc-700/80 transition-all hover:border-zinc-600/50"
           >
             Retry
@@ -635,7 +645,7 @@ export default function Dashboard() {
     );
   }
 
-  if (!data) {
+  if (loaded.length === 0) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
@@ -646,99 +656,71 @@ export default function Dashboard() {
     );
   }
 
-  const { state, stats, trades, equity_curve } = data;
-  const symbol = parseSymbol(data.symbol || activeSymbol);
-  const drawdownPct =
-    state.peak_equity > 0
-      ? ((state.peak_equity - state.equity) / state.peak_equity) * 100
-      : 0;
+  // ── Pool aggregate: shared equity → representative value; P&L / trades summed ──
+  const get = (id: SymbolId) => symData[id]!;
+  const equity = Math.max(0, ...loaded.map((s) => get(s.id).state.equity || 0));
+  const peak = Math.max(equity, ...loaded.map((s) => get(s.id).state.peak_equity || 0));
+  const startingCapital = Math.max(2000, ...loaded.map((s) => get(s.id).state.starting_capital || 0));
+  const poolPnl = loaded.reduce((a, s) => a + (get(s.id).stats.total_pnl || 0), 0);
+  const totalTrades = loaded.reduce((a, s) => a + (get(s.id).stats.total_trades || 0), 0);
+  const wins = loaded.reduce((a, s) => a + (get(s.id).stats.wins || 0), 0);
+  const losses = loaded.reduce((a, s) => a + (get(s.id).stats.losses || 0), 0);
+  const winRate = totalTrades > 0 ? (wins / totalTrades) * 100 : 0;
+  const drawdownPct = peak > 0 ? ((peak - equity) / peak) * 100 : 0;
+  const returnPct = startingCapital > 0 ? ((equity - startingCapital) / startingCapital) * 100 : 0;
+  const activeCount = loaded.filter((s) => get(s.id).state.live?.has_position).length;
+  const allTrades = loaded.flatMap((s) => (get(s.id).trades || []).map((t) => ({ ...t, symbol: t.symbol || s.id })));
+  const bestTrade = allTrades.length ? Math.max(0, ...allTrades.map((t) => t.pnl)) : 0;
+  const worstTrade = allTrades.length ? Math.min(0, ...allTrades.map((t) => t.pnl)) : 0;
+  const rrs = allTrades.map((t) => t.rr).filter((r) => Number.isFinite(r));
+  const avgRR = rrs.length ? rrs.reduce((a, b) => a + b, 0) / rrs.length : 0;
+  const curveSym = loaded.reduce((best, s) => (get(s.id).equity_curve.length > get(best.id).equity_curve.length ? s : best), loaded[0]);
+  const equityCurve = get(curveSym.id).equity_curve;
+  const poolEvents = loaded
+    .flatMap((s) => (get(s.id).recent_events || []).map((e) => ({ ...e, base: parseSymbol(s.id).base })))
+    .sort((a, b) => b.time.localeCompare(a.time));
+  const recentTrades = [...allTrades].sort((a, b) => (b.exit_time || "").localeCompare(a.exit_time || ""));
+  const em = ENGINE_META[engine];
 
   return (
     <main className="min-h-screen flex flex-col">
-      {/* ── Header ──────────────────────────────────────────────────── */}
+      {/* ── Header (decluttered: engine-primary; symbols live in the body) ── */}
       <header className="border-b border-zinc-800/40 bg-zinc-950/60 glass sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="flex items-center justify-between h-14">
-            <div className="flex items-center gap-4">
-              <div>
-                <h1 className="text-base font-bold tracking-tight flex items-center gap-2">
-                  <span className="text-violet-400" style={{ textShadow: "0 0 20px rgba(139, 92, 246, 0.3)" }}>SOOB</span>
-                  <span className="text-zinc-500 font-normal text-sm hidden sm:inline">Terminal</span>
-                </h1>
-              </div>
-              <div className="h-5 w-px bg-zinc-800/60" />
-              <div className="flex items-center gap-0.5 bg-zinc-900/50 rounded-lg p-0.5">
-                {SYMBOLS.map((s) => (
+          <div className="flex items-center justify-between h-14 gap-4">
+            <div className="flex items-center gap-4 min-w-0">
+              <h1 className="text-base font-bold tracking-tight flex items-center gap-2 shrink-0">
+                <span className="text-violet-400" style={{ textShadow: "0 0 20px rgba(139, 92, 246, 0.3)" }}>SOOB</span>
+                <span className="text-zinc-500 font-normal text-sm hidden sm:inline">Terminal</span>
+              </h1>
+              <div className="h-6 w-px bg-zinc-800/60 shrink-0" />
+              {/* Engine selector — the primary control (one shared pool per engine) */}
+              <div className="flex items-center gap-0.5 bg-zinc-900/50 rounded-lg p-0.5 ring-1 ring-zinc-800/60">
+                {(["v4", "v5", "v6"] as const).map((e) => (
                   <button
-                    key={s.id}
-                    onClick={() => setActiveSymbol(s.id)}
-                    className={`px-2.5 py-1 text-xs font-mono font-medium rounded-md transition-all duration-200 ${
-                      activeSymbol === s.id
-                        ? "bg-violet-500/15 text-violet-300 shadow-[0_0_10px_-3px_rgba(139,92,246,0.2)]"
+                    key={e}
+                    onClick={() => setEngine(e)}
+                    title={`${ENGINE_META[e].label} — ${ENGINE_META[e].desc}`}
+                    className={`px-3 py-1 text-xs font-mono font-bold rounded-md transition-all duration-200 ${
+                      engine === e
+                        ? `${ENGINE_META[e].bg} ${ENGINE_META[e].text}`
                         : "text-zinc-600 hover:text-zinc-300 hover:bg-zinc-800/50"
                     }`}
+                    style={engine === e ? { boxShadow: `0 0 10px -3px ${ENGINE_META[e].glow}` } : undefined}
                   >
-                    {s.base}
+                    {ENGINE_META[e].label}
                   </button>
                 ))}
               </div>
-              <div className="h-5 w-px bg-zinc-800/60" />
-              <div className="flex items-center gap-1.5" title="Engine: v4 (structural) · v5 (adaptive+trailing) · v6.1 (FRESH-gated let-run, weekends) — all shared $2k @3%">
-                <span className="text-[9px] uppercase tracking-wider text-zinc-600 font-semibold hidden lg:inline">Engine</span>
-                <div className="flex items-center gap-0.5 bg-zinc-900/50 rounded-lg p-0.5 ring-1 ring-zinc-800/60">
-                  {(["v4", "v5", "v6"] as const).map((e) => (
-                    <button
-                      key={e}
-                      onClick={() => setEngine(e)}
-                      className={`px-2.5 py-1 text-xs font-mono font-bold rounded-md transition-all duration-200 ${
-                        engine === e
-                          ? e === "v6"
-                            ? "bg-amber-500/15 text-amber-300 shadow-[0_0_10px_-3px_rgba(245,158,11,0.3)]"
-                            : e === "v5"
-                            ? "bg-violet-500/15 text-violet-300 shadow-[0_0_10px_-3px_rgba(139,92,246,0.3)]"
-                            : "bg-emerald-500/15 text-emerald-300 shadow-[0_0_10px_-3px_rgba(16,185,129,0.3)]"
-                          : "text-zinc-600 hover:text-zinc-300 hover:bg-zinc-800/50"
-                      }`}
-                    >
-                      {e}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              <span className="text-[11px] text-zinc-600 font-medium hidden md:inline truncate">{em.desc} · shared ${startingCapital.toLocaleString()} @3%</span>
             </div>
 
-            <div className="flex items-center gap-3">
-              <div className="hidden md:block">
-                <SessionBar />
-              </div>
-              <div className="h-5 w-px bg-zinc-800/60 hidden md:block" />
-              <a
-                href="/overview"
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800/40 border border-zinc-700/30 hover:bg-violet-500/10 hover:border-violet-500/20 transition-all duration-200 text-zinc-400 hover:text-violet-300"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" />
-                </svg>
-                <span className="text-xs font-medium">Overview</span>
-              </a>
-              <a
-                href={`/chart?symbol=${activeSymbol}&engine=${engine}`}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800/40 border border-zinc-700/30 hover:bg-violet-500/10 hover:border-violet-500/20 transition-all duration-200 text-zinc-400 hover:text-violet-300"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
-                </svg>
-                <span className="text-xs font-medium">Chart</span>
-              </a>
-              <a
-                href="/checker"
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800/40 border border-zinc-700/30 hover:bg-violet-500/10 hover:border-violet-500/20 transition-all duration-200 text-zinc-400 hover:text-violet-300"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
-                </svg>
-                <span className="text-xs font-medium">Checker</span>
-              </a>
+            <div className="flex items-center gap-2 shrink-0">
+              <div className="hidden lg:block"><SessionBar /></div>
+              <div className="h-5 w-px bg-zinc-800/60 hidden lg:block" />
+              <a href="/overview" className="px-3 py-1.5 rounded-lg bg-zinc-800/40 border border-zinc-700/30 hover:bg-violet-500/10 hover:border-violet-500/20 transition-all text-zinc-400 hover:text-violet-300 text-xs font-medium">Overview</a>
+              <a href={`/chart?symbol=${curveSym.id}&engine=${engine}`} className="px-3 py-1.5 rounded-lg bg-zinc-800/40 border border-zinc-700/30 hover:bg-violet-500/10 hover:border-violet-500/20 transition-all text-zinc-400 hover:text-violet-300 text-xs font-medium">Chart</a>
+              <a href="/checker" className="px-3 py-1.5 rounded-lg bg-zinc-800/40 border border-zinc-700/30 hover:bg-violet-500/10 hover:border-violet-500/20 transition-all text-zinc-400 hover:text-violet-300 text-xs font-medium">Checker</a>
             </div>
           </div>
         </div>
@@ -747,93 +729,116 @@ export default function Dashboard() {
       {/* ── Dashboard Body ──────────────────────────────────────────── */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 w-full flex-1">
 
-        {/* Live Banner — full width */}
-        <LiveBanner live={state.live} symbol={symbol} />
+        {/* Pool banner — engine's shared $2k account */}
+        <div className={`card-static p-5 flex flex-wrap items-center justify-between gap-4 ring-1 ${em.ring}`}>
+          <div className="flex items-center gap-3 min-w-0">
+            <span className={`px-2.5 py-1 rounded-md text-sm font-mono font-bold ${em.bg} ${em.text}`}>{em.label}</span>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-zinc-200 truncate">{em.desc}</p>
+              <p className="text-[11px] text-zinc-600">BTC · ETH · SOL — shared ${startingCapital.toLocaleString()} pool @ 3%</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-6">
+            <div className="text-right">
+              <p className="text-[10px] text-zinc-600 uppercase tracking-wider">Pool Equity</p>
+              <p className={`text-2xl font-bold font-mono tabular-nums ${equity >= startingCapital ? "text-emerald-400" : "text-red-400"}`}>
+                ${equity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-[10px] text-zinc-600 uppercase tracking-wider">Total P&L</p>
+              <p className={`text-lg font-bold font-mono tabular-nums ${poolPnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                {poolPnl >= 0 ? "+" : ""}${poolPnl.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+              </p>
+              <p className={`text-[11px] font-mono ${returnPct >= 0 ? "text-emerald-500/60" : "text-red-500/60"}`}>{returnPct >= 0 ? "+" : ""}{returnPct.toFixed(1)}%</p>
+            </div>
+            <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold border ${activeCount > 0 ? `${em.bg} ${em.text} border-transparent` : "text-zinc-600 border-zinc-800/60"}`}>
+              {activeCount}/{loaded.length} ACTIVE
+            </span>
+          </div>
+        </div>
+
+        {/* Positions strip — the 3 symbols traded from the shared pool */}
+        <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {SYMBOLS.map((s) => {
+            const d = symData[s.id];
+            const live = d?.state.live;
+            const inPos = !!live?.has_position;
+            const dir = (live as { position_direction?: string } | undefined)?.position_direction;
+            return (
+              <div key={s.id} className={`card-static p-3 flex flex-col gap-1.5 ${inPos ? `ring-1 ${em.ring}` : ""}`}>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-bold font-mono text-zinc-200">{s.base}</span>
+                  {inPos ? (
+                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold font-mono ${dir === "BEARISH" ? "bg-red-500/15 text-red-300" : "bg-emerald-500/15 text-emerald-300"}`}>
+                      {dir === "BEARISH" ? "SHORT" : "LONG"} {live?.current_rr != null ? `${live.current_rr >= 0 ? "+" : ""}${live.current_rr.toFixed(1)}R` : ""}
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-zinc-600 font-mono">{live ? "scanning" : "—"}</span>
+                  )}
+                </div>
+                <p className="text-base font-mono tabular-nums text-zinc-300">{live ? `$${live.price.toLocaleString(undefined, { maximumFractionDigits: live.price < 10 ? 4 : 2 })}` : "—"}</p>
+                <p className="text-[10px] text-zinc-600 leading-snug line-clamp-2 min-h-[26px]">{live?.thinking || ""}</p>
+              </div>
+            );
+          })}
+        </div>
 
         {/* Main grid */}
         <div className="mt-5 grid grid-cols-1 lg:grid-cols-12 gap-4">
 
           {/* ── Left Column: Stats ──────────────────────────────────── */}
           <div className="lg:col-span-4 flex flex-col gap-4 order-1">
-            <PhaseIndicator phase={data.phase} equity={state.equity} />
-
+            <p className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium">Pool Stats (combined)</p>
             <div className="grid grid-cols-2 gap-3 lg:flex-1 lg:grid-rows-2">
               <StatCard
                 label="Equity"
-                value={`$${state.equity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-                sub={`Peak: $${state.peak_equity.toLocaleString()}`}
-                accent={state.equity >= state.starting_capital ? "green" : "red"}
+                value={`$${equity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                sub={`Peak: $${peak.toLocaleString()}`}
+                accent={equity >= startingCapital ? "green" : "red"}
                 delay={100}
               />
               <StatCard
                 label="Total P&L"
-                value={`${stats.total_pnl >= 0 ? "+" : ""}$${stats.total_pnl.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
-                sub={`${stats.total_trades} trades`}
-                accent={stats.total_pnl >= 0 ? "green" : "red"}
+                value={`${poolPnl >= 0 ? "+" : ""}$${poolPnl.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
+                sub={`${totalTrades} trades`}
+                accent={poolPnl >= 0 ? "green" : "red"}
                 delay={150}
               />
               <StatCard
                 label="Win Rate"
-                value={stats.total_trades > 0 ? `${stats.win_rate}%` : "--"}
-                sub={`${stats.wins}W / ${stats.losses}L`}
-                accent={
-                  stats.win_rate >= 70
-                    ? "green"
-                    : stats.win_rate >= 50
-                      ? "yellow"
-                      : "red"
-                }
+                value={totalTrades > 0 ? `${winRate.toFixed(1)}%` : "--"}
+                sub={`${wins}W / ${losses}L`}
+                accent={winRate >= 70 ? "green" : winRate >= 50 ? "yellow" : "red"}
                 delay={200}
               />
               <StatCard
                 label="Drawdown"
                 value={`${drawdownPct.toFixed(1)}%`}
-                sub={`Max: $${state.max_drawdown.toFixed(0)}`}
-                accent={
-                  drawdownPct > 20 ? "red" : drawdownPct > 10 ? "yellow" : "green"
-                }
+                sub={`Max: $${(peak - equity).toFixed(0)}`}
+                accent={drawdownPct > 20 ? "red" : drawdownPct > 10 ? "yellow" : "green"}
                 delay={250}
               />
             </div>
 
             <div className="grid grid-cols-3 gap-3">
-              <StatCard
-                label="Avg RR"
-                value={stats.avg_rr > 0 ? `${stats.avg_rr}R` : "--"}
-                delay={300}
-              />
-              <StatCard
-                label="Best"
-                value={
-                  stats.best_trade > 0 ? `+$${stats.best_trade.toFixed(0)}` : "--"
-                }
-                accent="green"
-                delay={350}
-              />
-              <StatCard
-                label="Worst"
-                value={
-                  stats.worst_trade < 0
-                    ? `-$${Math.abs(stats.worst_trade).toFixed(0)}`
-                    : "--"
-                }
-                accent="red"
-                delay={400}
-              />
+              <StatCard label="Avg RR" value={avgRR > 0 ? `${avgRR.toFixed(1)}R` : "--"} delay={300} />
+              <StatCard label="Best" value={bestTrade > 0 ? `+$${bestTrade.toFixed(0)}` : "--"} accent="green" delay={350} />
+              <StatCard label="Worst" value={worstTrade < 0 ? `-$${Math.abs(worstTrade).toFixed(0)}` : "--"} accent="red" delay={400} />
             </div>
           </div>
 
           {/* ── Center Column: Equity + Activity ────────────────────── */}
           <div className="lg:col-span-4 flex flex-col gap-4 order-2">
             <EquityChart
-              data={equity_curve}
-              startingCapital={state.starting_capital}
+              data={equityCurve}
+              startingCapital={startingCapital}
             />
 
-            {/* Activity Log — paginated, fills remaining height */}
+            {/* Activity Log — combined across symbols, paginated */}
             <div className="card-static p-4 animate-fade-in lg:flex-1 flex flex-col" style={{ animationDelay: "150ms" }}>
               {(() => {
-                const allEvents = [...data.recent_events].reverse();
+                const allEvents = poolEvents;
                 const totalPages = Math.max(1, Math.ceil(allEvents.length / EVENTS_PER_PAGE));
                 const safePage = Math.min(eventPage, totalPages - 1);
                 const pageEvents = allEvents.slice(
@@ -886,7 +891,8 @@ export default function Dashboard() {
                                 hour12: false,
                               })}
                             </span>
-                            <span className="text-zinc-400 truncate">{evt.event}</span>
+                            <span className="text-zinc-700 font-mono shrink-0">{evt.base}</span>
+                            <span className="text-zinc-400 truncate flex-1 text-right">{evt.event}</span>
                           </div>
                         ))}
                       </div>
@@ -903,7 +909,7 @@ export default function Dashboard() {
               <p className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium mb-3">
                 Recent Trades
               </p>
-              {trades.length === 0 ? (
+              {recentTrades.length === 0 ? (
                 <div className="flex flex-col items-center justify-center flex-1 py-12 text-center">
                   <div className="w-12 h-12 rounded-full bg-zinc-800/40 flex items-center justify-center mb-3">
                     <svg className="w-5 h-5 text-zinc-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -911,12 +917,11 @@ export default function Dashboard() {
                     </svg>
                   </div>
                   <p className="text-zinc-600 text-sm">No trades yet</p>
-                  <p className="text-zinc-700 text-xs mt-1">Bot is scanning for setups</p>
+                  <p className="text-zinc-700 text-xs mt-1">Pool is scanning all 3 symbols</p>
                 </div>
               ) : (
                 <div className="overflow-y-auto flex-1 pr-1">
-                  {[...trades]
-                    .reverse()
+                  {recentTrades
                     .map((trade, i) => (
                       <TradeRow
                         key={i}
