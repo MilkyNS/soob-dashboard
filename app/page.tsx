@@ -687,8 +687,8 @@ export default function Dashboard() {
       {/* ── Header (decluttered: engine-primary; symbols live in the body) ── */}
       <header className="border-b border-zinc-800/40 bg-zinc-950/60 glass sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="flex items-center justify-between h-14 gap-4">
-            <div className="flex items-center gap-4 min-w-0">
+          <div className="flex items-center justify-between gap-x-3 gap-y-2 py-2 sm:h-14 sm:py-0 flex-wrap">
+            <div className="flex items-center gap-2 sm:gap-4 min-w-0">
               <h1 className="text-base font-bold tracking-tight flex items-center gap-2 shrink-0">
                 <span className="text-violet-400" style={{ textShadow: "0 0 20px rgba(139, 92, 246, 0.3)" }}>SOOB</span>
                 <span className="text-zinc-500 font-normal text-sm hidden sm:inline">Terminal</span>
@@ -701,7 +701,7 @@ export default function Dashboard() {
                     key={e}
                     onClick={() => setEngine(e)}
                     title={`${ENGINE_META[e].label} — ${ENGINE_META[e].desc}`}
-                    className={`px-3 py-1 text-xs font-mono font-bold rounded-md transition-all duration-200 ${
+                    className={`px-2.5 sm:px-3 py-1 text-xs font-mono font-bold rounded-md transition-all duration-200 ${
                       engine === e
                         ? `${ENGINE_META[e].bg} ${ENGINE_META[e].text}`
                         : "text-zinc-600 hover:text-zinc-300 hover:bg-zinc-800/50"
@@ -714,12 +714,12 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 ml-auto">
               <div className="hidden lg:block"><SessionBar /></div>
               <div className="h-5 w-px bg-zinc-800/60 hidden lg:block" />
-              <a href="/overview" className="px-3 py-1.5 rounded-lg bg-zinc-800/40 border border-zinc-700/30 hover:bg-violet-500/10 hover:border-violet-500/20 transition-all text-zinc-400 hover:text-violet-300 text-xs font-medium">Overview</a>
-              <a href={`/chart?symbol=${curveSym.id}&engine=${engine}`} className="px-3 py-1.5 rounded-lg bg-zinc-800/40 border border-zinc-700/30 hover:bg-violet-500/10 hover:border-violet-500/20 transition-all text-zinc-400 hover:text-violet-300 text-xs font-medium">Chart</a>
-              <a href="/checker" className="px-3 py-1.5 rounded-lg bg-zinc-800/40 border border-zinc-700/30 hover:bg-violet-500/10 hover:border-violet-500/20 transition-all text-zinc-400 hover:text-violet-300 text-xs font-medium">Checker</a>
+              <a href="/overview" className="px-2.5 sm:px-3 py-1.5 rounded-lg bg-zinc-800/40 border border-zinc-700/30 hover:bg-violet-500/10 hover:border-violet-500/20 transition-all text-zinc-400 hover:text-violet-300 text-xs font-medium">Overview</a>
+              <a href={`/chart?symbol=${curveSym.id}&engine=${engine}`} className="px-2.5 sm:px-3 py-1.5 rounded-lg bg-zinc-800/40 border border-zinc-700/30 hover:bg-violet-500/10 hover:border-violet-500/20 transition-all text-zinc-400 hover:text-violet-300 text-xs font-medium">Chart</a>
+              <a href="/checker" className="px-2.5 sm:px-3 py-1.5 rounded-lg bg-zinc-800/40 border border-zinc-700/30 hover:bg-violet-500/10 hover:border-violet-500/20 transition-all text-zinc-400 hover:text-violet-300 text-xs font-medium">Checker</a>
             </div>
           </div>
         </div>
@@ -729,22 +729,22 @@ export default function Dashboard() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 w-full flex-1">
 
         {/* Pool banner — engine's shared $2k account */}
-        <div className={`card-static p-5 flex flex-wrap items-center justify-between gap-4 ring-1 ${em.ring}`}>
+        <div className={`card-static p-4 sm:p-5 flex flex-wrap items-center justify-between gap-x-4 gap-y-3 ring-1 ${em.ring}`}>
           <div className="flex items-center gap-3 min-w-0">
             <span className={`px-3 py-1.5 rounded-md text-base font-mono font-bold ${em.bg} ${em.text}`}>{em.label}</span>
             <p className="text-[11px] text-zinc-600">BTC · ETH · SOL — shared ${startingCapital.toLocaleString()} @ 3%</p>
           </div>
-          <div className="flex items-center gap-8 sm:gap-10">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-3 sm:gap-10">
             <div className="text-right">
               <p className="text-[10px] text-zinc-600 uppercase tracking-wider mb-1">Pool Equity</p>
-              <p className={`text-2xl font-bold font-mono tabular-nums leading-none ${equity >= startingCapital ? "text-emerald-400" : "text-red-400"}`}>
+              <p className={`text-xl sm:text-2xl font-bold font-mono tabular-nums leading-none ${equity >= startingCapital ? "text-emerald-400" : "text-red-400"}`}>
                 ${equity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </p>
               <p className="text-[11px] text-zinc-600 font-mono mt-1.5">of ${startingCapital.toLocaleString()} start</p>
             </div>
             <div className="text-right">
               <p className="text-[10px] text-zinc-600 uppercase tracking-wider mb-1">Total P&L</p>
-              <p className={`text-2xl font-bold font-mono tabular-nums leading-none ${poolPnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+              <p className={`text-xl sm:text-2xl font-bold font-mono tabular-nums leading-none ${poolPnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                 {poolPnl >= 0 ? "+" : ""}${poolPnl.toLocaleString(undefined, { minimumFractionDigits: 2 })}
               </p>
               <p className={`text-[11px] font-mono mt-1.5 ${returnPct >= 0 ? "text-emerald-500/60" : "text-red-500/60"}`}>{returnPct >= 0 ? "+" : ""}{returnPct.toFixed(1)}% return</p>
@@ -940,7 +940,7 @@ export default function Dashboard() {
 
       {/* ── Footer ──────────────────────────────────────────────────── */}
       <footer className="border-t border-zinc-800/20 mt-auto">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
           <p className="text-[10px] text-zinc-700 font-mono tracking-wide">
             PAPER MODE — No real money at risk
           </p>

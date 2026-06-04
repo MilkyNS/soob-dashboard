@@ -674,8 +674,8 @@ function ChartPage() {
   return (
     <div className="flex flex-col h-screen bg-[#060608] text-white">
       {/* ── Top Bar ─────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-zinc-800/40 bg-zinc-950/60 glass shrink-0">
-        <div className="flex items-center gap-3">
+      <div className="flex items-center justify-between gap-x-3 gap-y-2 px-3 py-2 border-b border-zinc-800/40 bg-zinc-950/60 glass shrink-0 flex-wrap">
+        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
           <a
             href="/"
             className="text-zinc-500 hover:text-violet-400 transition-colors duration-200 text-sm"
@@ -683,7 +683,7 @@ function ChartPage() {
             ← Dashboard
           </a>
 
-          <div className="h-4 w-px bg-zinc-800/60" />
+          <div className="h-4 w-px bg-zinc-800/60 hidden sm:block" />
 
           {/* Symbol selector (the chart is one symbol at a time) */}
           <div className="flex items-center gap-0.5 bg-zinc-900/50 rounded-lg p-0.5 ring-1 ring-zinc-800/60" title="Symbol">
@@ -702,7 +702,7 @@ function ChartPage() {
             ))}
           </div>
 
-          <div className="h-4 w-px bg-zinc-800/60" />
+          <div className="h-4 w-px bg-zinc-800/60 hidden sm:block" />
 
           {/* Engine toggle */}
           <div className="flex items-center gap-0.5 bg-zinc-900/50 rounded-lg p-0.5 ring-1 ring-zinc-800/60" title="Engine: v4 (structural) · v5 (adaptive+trailing) · v6.1 (FRESH-gated let-run, weekends)">
@@ -725,7 +725,7 @@ function ChartPage() {
             ))}
           </div>
 
-          <div className="h-4 w-px bg-zinc-800/60" />
+          <div className="h-4 w-px bg-zinc-800/60 hidden sm:block" />
 
           {/* Timeframe selector */}
           <div className="flex items-center gap-0.5 bg-zinc-900/50 rounded-lg p-0.5">
@@ -804,9 +804,9 @@ function ChartPage() {
       </div>
 
       {/* ── HTF Bias Row ────────────────────────────────────────────── */}
-      <div className="flex items-center gap-4 px-3 py-1.5 border-b border-zinc-800/30 bg-zinc-950/40 shrink-0">
-        <span className="text-[10px] text-zinc-700 font-mono uppercase tracking-wider">HTF Bias</span>
-        <div className="flex items-center gap-2">
+      <div className="flex items-center gap-4 px-3 py-1.5 border-b border-zinc-800/30 bg-zinc-950/40 shrink-0 overflow-x-auto">
+        <span className="text-[10px] text-zinc-700 font-mono uppercase tracking-wider shrink-0">HTF Bias</span>
+        <div className="flex items-center gap-2 shrink-0">
           {biases.map((b) => (
             <div key={b.tf} className="flex items-center gap-1.5">
               <span

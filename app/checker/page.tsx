@@ -358,8 +358,8 @@ export default function Checker() {
       {/* Header */}
       <header className="border-b border-zinc-800/40 bg-zinc-950/60 glass sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="flex items-center justify-between h-14">
-            <div className="flex items-center gap-4">
+          <div className="flex items-center justify-between gap-x-3 gap-y-2 py-2 sm:h-14 sm:py-0 flex-wrap">
+            <div className="flex items-center gap-2 sm:gap-4">
               <h1 className="text-base font-bold tracking-tight flex items-center gap-2">
                 <span className="text-violet-400" style={{ textShadow: "0 0 20px rgba(139, 92, 246, 0.3)" }}>SOOB</span>
                 <span className="text-zinc-500 font-normal text-sm">Checker</span>
@@ -368,7 +368,7 @@ export default function Checker() {
               <a href="/" className="text-xs text-zinc-600 hover:text-zinc-300 transition-colors">Single View</a>
               <a href="/overview" className="text-xs text-zinc-600 hover:text-zinc-300 transition-colors">Overview</a>
             </div>
-            <div className="flex items-center gap-3 text-xs text-zinc-600">
+            <div className="flex items-center gap-3 text-xs text-zinc-600 ml-auto">
               {lastUpdate && (
                 <span className="font-mono tabular-nums">
                   Updated {lastUpdate.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })}
@@ -453,7 +453,7 @@ export default function Checker() {
 
       {/* Footer */}
       <footer className="border-t border-zinc-800/20 mt-auto">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
           <p className="text-[10px] text-zinc-700 font-mono tracking-wide">
             RECONCILIATION — Signal Replay vs Live Bot
           </p>
