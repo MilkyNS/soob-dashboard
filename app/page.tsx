@@ -8,6 +8,8 @@ const SYMBOLS = [
   { id: "BTCUSDT", base: "BTC", quote: "USDT" },
   { id: "ETHUSDT", base: "ETH", quote: "USDT" },
   { id: "SOLUSDT", base: "SOL", quote: "USDT" },
+  { id: "XRPUSDT", base: "XRP", quote: "USDT" },
+  { id: "ASTERUSDT", base: "ASTER", quote: "USDT" },
 ] as const;
 
 type SymbolId = (typeof SYMBOLS)[number]["id"];
@@ -583,20 +585,19 @@ const EVENTS_PER_PAGE = 10;
 
 const ENGINE_META = {
   v4: { label: "v4", desc: "Tight targets, high win-rate", text: "text-emerald-300", ring: "ring-emerald-500/30", bg: "bg-emerald-500/15", glow: "rgba(16,185,129,0.3)" },
-  v5: { label: "v5", desc: "Aggressive, runs everything", text: "text-violet-300", ring: "ring-violet-500/30", bg: "bg-violet-500/15", glow: "rgba(139,92,246,0.3)" },
   v6: { label: "v6.1", desc: "Lets winners run, trades weekends", text: "text-amber-300", ring: "ring-amber-500/30", bg: "bg-amber-500/15", glow: "rgba(245,158,11,0.3)" },
 } as const;
 
 export default function Dashboard() {
-  const [engine, setEngine] = useState<"v4" | "v5" | "v6">("v6");
-  const [symData, setSymData] = useState<Record<SymbolId, BotStatus | null>>({ BTCUSDT: null, ETHUSDT: null, SOLUSDT: null });
+  const [engine, setEngine] = useState<"v4" | "v6">("v6");
+  const [symData, setSymData] = useState<Record<SymbolId, BotStatus | null>>({ BTCUSDT: null, ETHUSDT: null, SOLUSDT: null, XRPUSDT: null, ASTERUSDT: null });
   const [error, setError] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [eventPage, setEventPage] = useState(0);
   const [expandedTrade, setExpandedTrade] = useState<number | null>(null);
 
-  async function fetchData(eng: "v4" | "v5" | "v6") {
-    // One shared $2k pool per engine across all 3 symbols → fetch all, aggregate.
+  async function fetchData(eng: "v4" | "v6") {
+    // One shared $2k pool per engine across all 5 symbols → fetch all, aggregate.
     const results = await Promise.allSettled(
       SYMBOLS.map(async (s) => {
         const res = await fetch(`/api/status?symbol=${s.id}&prefix=MULTI_${eng.toUpperCase()}`, { cache: "no-store" });
@@ -604,7 +605,7 @@ export default function Dashboard() {
         return { id: s.id, data: (await res.json()) as BotStatus };
       })
     );
-    const next: Record<SymbolId, BotStatus | null> = { BTCUSDT: null, ETHUSDT: null, SOLUSDT: null };
+    const next: Record<SymbolId, BotStatus | null> = { BTCUSDT: null, ETHUSDT: null, SOLUSDT: null, XRPUSDT: null, ASTERUSDT: null };
     let ok = false;
     for (const r of results) if (r.status === "fulfilled") { next[r.value.id] = r.value.data; ok = true; }
     setSymData(next);
@@ -613,7 +614,7 @@ export default function Dashboard() {
   }
 
   useEffect(() => {
-    setSymData({ BTCUSDT: null, ETHUSDT: null, SOLUSDT: null });
+    setSymData({ BTCUSDT: null, ETHUSDT: null, SOLUSDT: null, XRPUSDT: null, ASTERUSDT: null });
     setEventPage(0);
     setExpandedTrade(null);
     fetchData(engine);
@@ -696,7 +697,7 @@ export default function Dashboard() {
               <div className="h-6 w-px bg-zinc-800/60 shrink-0" />
               {/* Engine selector — the primary control (one shared pool per engine) */}
               <div className="flex items-center gap-0.5 bg-zinc-900/50 rounded-lg p-0.5 ring-1 ring-zinc-800/60">
-                {(["v4", "v5", "v6"] as const).map((e) => (
+                {(["v4", "v6"] as const).map((e) => (
                   <button
                     key={e}
                     onClick={() => setEngine(e)}
@@ -732,7 +733,7 @@ export default function Dashboard() {
         <div className={`card-static p-4 sm:p-5 flex flex-wrap items-center justify-between gap-x-4 gap-y-3 ring-1 ${em.ring}`}>
           <div className="flex items-center gap-3 min-w-0">
             <span className={`px-3 py-1.5 rounded-md text-base font-mono font-bold ${em.bg} ${em.text}`}>{em.label}</span>
-            <p className="text-[11px] text-zinc-600">BTC · ETH · SOL — shared ${startingCapital.toLocaleString()} @ 3%</p>
+            <p className="text-[11px] text-zinc-600">BTC · ETH · SOL · XRP · ASTER — shared ${startingCapital.toLocaleString()} @ 3%</p>
           </div>
           <div className="flex flex-wrap items-center gap-x-6 gap-y-3 sm:gap-10">
             <div className="text-right">
@@ -750,7 +751,7 @@ export default function Dashboard() {
               <p className={`text-[11px] font-mono mt-1.5 ${returnPct >= 0 ? "text-emerald-500/60" : "text-red-500/60"}`}>{returnPct >= 0 ? "+" : ""}{returnPct.toFixed(1)}% return</p>
             </div>
             <span
-              title="How many of the 3 symbols currently have an open position"
+              title="How many of the 5 symbols currently have an open position"
               className={`px-2.5 py-1 rounded-full text-[11px] font-bold border whitespace-nowrap ${activeCount > 0 ? `${em.bg} ${em.text} border-transparent` : "text-zinc-500 border-zinc-800/60"}`}
             >
               {activeCount > 0 ? `${activeCount}/${loaded.length} in trade` : "Flat — scanning"}
@@ -758,8 +759,8 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Positions strip — the 3 symbols traded from the shared pool */}
-        <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {/* Positions strip — the 5 symbols traded from the shared pool */}
+        <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           {SYMBOLS.map((s) => {
             const d = symData[s.id];
             const live = d?.state.live;
@@ -917,7 +918,7 @@ export default function Dashboard() {
                     </svg>
                   </div>
                   <p className="text-zinc-600 text-sm">No trades yet</p>
-                  <p className="text-zinc-700 text-xs mt-1">Pool is scanning all 3 symbols</p>
+                  <p className="text-zinc-700 text-xs mt-1">Pool is scanning all 5 symbols</p>
                 </div>
               ) : (
                 <div className="overflow-y-auto flex-1 pr-1">

@@ -42,7 +42,6 @@ interface ReconData {
   latest: {
     single?: ReconRun;
     v4?: ReconRun;
-    v5?: ReconRun;
     v6?: ReconRun;
   };
   error?: string;
@@ -350,7 +349,6 @@ export default function Checker() {
   }
 
   const singleRun = data.latest?.v4 ?? data.latest?.single;
-  const v5Run = data.latest?.v5;
   const v6Run = data.latest?.v6;
 
   return (
@@ -403,27 +401,6 @@ export default function Checker() {
         {singleRun && singleRun.results.length > 0 && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
             {singleRun.results.map((r, i) => (
-              <SymbolCard key={r.symbol} result={r} delay={i * 80} />
-            ))}
-          </div>
-        )}
-
-        {/* Divider */}
-        <div className="mt-10 mb-6">
-          <div className="flex items-center gap-3">
-            <div className="h-px flex-1 bg-gradient-to-r from-transparent via-violet-500/20 to-transparent" />
-            <span className="text-sm font-bold text-violet-400 tracking-wider uppercase" style={{ textShadow: "0 0 20px rgba(139, 92, 246, 0.3)" }}>
-              v5 Bots — Adaptive + Trailing
-            </span>
-            <div className="h-px flex-1 bg-gradient-to-r from-transparent via-violet-500/20 to-transparent" />
-          </div>
-        </div>
-
-        {/* v5 Bot Section */}
-        <StatusHero run={v5Run} label="v5 Bots — Adaptive + Trailing" />
-        {v5Run && v5Run.results.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-            {v5Run.results.map((r, i) => (
               <SymbolCard key={r.symbol} result={r} delay={i * 80} />
             ))}
           </div>

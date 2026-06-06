@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 const REFRESH_INTERVAL = 15000;
-const SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT"] as const;
+const SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "ASTERUSDT"] as const;
 type SymbolId = (typeof SYMBOLS)[number];
 
 interface LiveTick {
@@ -235,16 +235,15 @@ export default function Overview() {
     BTCUSDT: null,
     ETHUSDT: null,
     SOLUSDT: null,
-  });
-  const [multiData, setMultiData] = useState<Record<SymbolId, BotStatus | null>>({
-    BTCUSDT: null,
-    ETHUSDT: null,
-    SOLUSDT: null,
+    XRPUSDT: null,
+    ASTERUSDT: null,
   });
   const [v6Data, setV6Data] = useState<Record<SymbolId, BotStatus | null>>({
     BTCUSDT: null,
     ETHUSDT: null,
     SOLUSDT: null,
+    XRPUSDT: null,
+    ASTERUSDT: null,
   });
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
 
@@ -256,15 +255,14 @@ export default function Overview() {
         return { sym, data: await r.json() as BotStatus };
       })
     );
-    const out: Record<SymbolId, BotStatus | null> = { BTCUSDT: null, ETHUSDT: null, SOLUSDT: null };
+    const out: Record<SymbolId, BotStatus | null> = { BTCUSDT: null, ETHUSDT: null, SOLUSDT: null, XRPUSDT: null, ASTERUSDT: null };
     for (const x of res) if (x.status === "fulfilled") out[x.value.sym] = x.value.data;
     return out;
   }
 
   async function fetchAll() {
-    // 3 multibots, each a shared $2k pool across BTC+ETH+SOL.
+    // 2 multibots, each a shared $2k pool across BTC+ETH+SOL+XRP+ASTER.
     setAllData(await fetchGroup("MULTI_V4"));
-    setMultiData(await fetchGroup("MULTI_V5"));
     setV6Data(await fetchGroup("MULTI_V6"));
     setLastUpdate(new Date());
   }
@@ -293,15 +291,11 @@ export default function Overview() {
     };
   }
   const v4 = agg(allData);
-  const v5 = agg(multiData);
   const v6 = agg(v6Data);
   // Back-compat aliases for the existing v4-section markup below.
   const totalEquity = v4.equity, totalStarting = v4.starting, totalPnl = v4.pnl,
         totalTrades = v4.trades, totalWins = v4.wins, totalLosses = v4.losses,
         totalWR = v4.wr, totalReturn = v4.ret, activePositions = v4.active;
-  const multiEquity = v5.equity, multiStarting = v5.starting, multiPnl = v5.pnl,
-        multiTrades = v5.trades, multiWins = v5.wins, multiLosses = v5.losses,
-        multiWR = v5.wr, multiReturn = v5.ret, multiActivePositions = v5.active;
 
   return (
     <main className="min-h-screen flex flex-col">
@@ -459,77 +453,6 @@ export default function Overview() {
           );
         })()}
 
-        {/* ═══ v5 Bot Section ═══ */}
-        <div className="mt-10 mb-2">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="h-px flex-1 bg-gradient-to-r from-transparent via-violet-500/20 to-transparent" />
-            <h2 className="text-sm font-bold text-violet-400 tracking-wider uppercase" style={{ textShadow: "0 0 20px rgba(139, 92, 246, 0.3)" }}>
-              v5 Bots — Adaptive + Trailing
-            </h2>
-            <div className="h-px flex-1 bg-gradient-to-r from-transparent via-violet-500/20 to-transparent" />
-          </div>
-          <p className="text-[11px] text-zinc-600 text-center mb-4">
-            shared $2,000 pool · adaptive TPs · trailing-after-partial · 3% risk
-          </p>
-        </div>
-
-        {/* v5-bot portfolio summary */}
-        <div className="card-static p-5 mb-6 animate-fade-in border-violet-500/10">
-          <div className="flex items-center justify-between mb-4">
-            <p className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium">v5 — shared $2k pool</p>
-            {multiActivePositions > 0 && (
-              <span className="px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-300 border border-violet-500/20 text-[10px] font-bold">
-                {multiActivePositions} ACTIVE
-              </span>
-            )}
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-6">
-            <div>
-              <p className="text-[10px] text-zinc-600 uppercase tracking-wider">Total Equity</p>
-              <p className={`text-xl font-bold font-mono tabular-nums mt-1 ${multiEquity >= multiStarting ? "text-emerald-400" : "text-red-400"}`}>
-                ${multiEquity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </p>
-              <p className="text-[11px] text-zinc-600 font-mono mt-0.5">
-                of ${multiStarting.toLocaleString()} starting
-              </p>
-            </div>
-            <div>
-              <p className="text-[10px] text-zinc-600 uppercase tracking-wider">Total P&L</p>
-              <p className={`text-xl font-bold font-mono tabular-nums mt-1 ${multiPnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                {multiPnl >= 0 ? "+" : ""}${multiPnl.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-              </p>
-              <p className={`text-[11px] font-mono mt-0.5 ${multiReturn >= 0 ? "text-emerald-500/60" : "text-red-500/60"}`}>
-                {multiReturn >= 0 ? "+" : ""}{multiReturn.toFixed(1)}% return
-              </p>
-            </div>
-            <div>
-              <p className="text-[10px] text-zinc-600 uppercase tracking-wider">Win Rate</p>
-              <p className="text-xl font-bold font-mono tabular-nums mt-1 text-zinc-200">
-                {multiTrades > 0 ? `${multiWR.toFixed(1)}%` : "—"}
-              </p>
-              <p className="text-[11px] text-zinc-600 font-mono mt-0.5">
-                {multiTrades} trades ({multiWins}W / {multiLosses}L)
-              </p>
-            </div>
-            <div>
-              <p className="text-[10px] text-zinc-600 uppercase tracking-wider">Active Positions</p>
-              <p className={`text-xl font-bold font-mono tabular-nums mt-1 ${multiActivePositions > 0 ? "text-violet-400" : "text-zinc-500"}`}>
-                {multiActivePositions}
-              </p>
-              <p className="text-[11px] text-zinc-600 font-mono mt-0.5">
-                of {SYMBOLS.length} symbols
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Multi-bot per-symbol cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          {SYMBOLS.map((sym) => (
-            <SymbolCard key={`multi-${sym}`} symbol={sym} data={multiData[sym]} />
-          ))}
-        </div>
-
         {/* ═══ v6.1 Bot Section ═══ */}
         <div className="mt-10 mb-2">
           <div className="flex items-center gap-3 mb-4">
@@ -597,7 +520,7 @@ export default function Overview() {
       {/* Footer */}
       <footer className="border-t border-zinc-800/40 py-3 mt-auto">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[10px] text-zinc-700">
-          <span>SOOB Paper Trading — v4 + v5 + v6.1 multibots (shared $2k each)</span>
+          <span>SOOB Paper Trading — v4 + v6.1 multibots (shared $2k each)</span>
           <span className="font-mono tabular-nums">Refresh: {REFRESH_INTERVAL / 1000}s</span>
         </div>
       </footer>

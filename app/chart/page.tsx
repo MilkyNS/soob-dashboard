@@ -334,8 +334,8 @@ function ChartPage() {
     return s;
   }, [symbol]);
 
-  const [engine, setEngine] = useState<"v4" | "v5" | "v6">(
-    (["v4", "v5", "v6"].includes(searchParams.get("engine") || "") ? searchParams.get("engine") : "v6") as "v4" | "v5" | "v6"
+  const [engine, setEngine] = useState<"v4" | "v6">(
+    (["v4", "v6"].includes(searchParams.get("engine") || "") ? searchParams.get("engine") : "v6") as "v4" | "v6"
   );
   const [data, setData] = useState<StructuresResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -687,7 +687,7 @@ function ChartPage() {
 
           {/* Symbol selector (the chart is one symbol at a time) */}
           <div className="flex items-center gap-0.5 bg-zinc-900/50 rounded-lg p-0.5 ring-1 ring-zinc-800/60" title="Symbol">
-            {(["BTCUSDT", "ETHUSDT", "SOLUSDT"] as const).map((sid) => (
+            {(["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "ASTERUSDT"] as const).map((sid) => (
               <button
                 key={sid}
                 onClick={() => setSymbol(sid)}
@@ -705,8 +705,8 @@ function ChartPage() {
           <div className="h-4 w-px bg-zinc-800/60 hidden sm:block" />
 
           {/* Engine toggle */}
-          <div className="flex items-center gap-0.5 bg-zinc-900/50 rounded-lg p-0.5 ring-1 ring-zinc-800/60" title="Engine: v4 (structural) · v5 (adaptive+trailing) · v6.1 (FRESH-gated let-run, weekends)">
-            {(["v4", "v5", "v6"] as const).map((e) => (
+          <div className="flex items-center gap-0.5 bg-zinc-900/50 rounded-lg p-0.5 ring-1 ring-zinc-800/60" title="Engine: v4 (structural) · v6.1 (FRESH-gated let-run, weekends)">
+            {(["v4", "v6"] as const).map((e) => (
               <button
                 key={e}
                 onClick={() => setEngine(e)}
@@ -714,8 +714,6 @@ function ChartPage() {
                   engine === e
                     ? e === "v6"
                       ? "bg-amber-500/15 text-amber-300 shadow-[0_0_10px_-3px_rgba(245,158,11,0.3)]"
-                      : e === "v5"
-                      ? "bg-violet-500/15 text-violet-300 shadow-[0_0_10px_-3px_rgba(139,92,246,0.3)]"
                       : "bg-emerald-500/15 text-emerald-300 shadow-[0_0_10px_-3px_rgba(16,185,129,0.3)]"
                     : "text-zinc-600 hover:text-zinc-300 hover:bg-zinc-800/50"
                 }`}
